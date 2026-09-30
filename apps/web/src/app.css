@@ -1,0 +1,70 @@
+@import "tailwindcss";
+
+/*
+ * As cores do app moram aqui, como variáveis, e o Tailwind só as referencia.
+ * Assim o tema escuro é trocar as variáveis — sem `dark:` espalhado por cada
+ * componente, que é como um dos dois temas acaba esquecido.
+ */
+:root {
+  color-scheme: light;
+  --fundo: #f7f8f6;
+  --superficie: #ffffff;
+  --borda: #e3e7e5;
+  --grade: #eceff0;
+  --tinta: #1c2321;
+  --tinta-2: #56625f;
+  --tinta-3: #7c8784;
+  --destaque: #0f766e;
+  --destaque-suave: #ccfbf1;
+  --sobre-destaque: #ffffff;
+  --perigo: #b42318;
+  /* A linha dos gráficos. Não é o --destaque: aquele é cor de botão, e este
+     passou pelo validador de paleta contra a superfície de cada tema. */
+  --serie: #0d9488;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --fundo: #0e1312;
+    --superficie: #161d1b;
+    --borda: #26302d;
+    --grade: #212a27;
+    --tinta: #e6ebe9;
+    --tinta-2: #a3aeab;
+    --tinta-3: #7a8582;
+    --destaque: #2dd4bf;
+    --destaque-suave: #123c37;
+    --sobre-destaque: #06201d;
+    --perigo: #f97066;
+    --serie: #10a596;
+  }
+}
+
+@theme inline {
+  --color-fundo: var(--fundo);
+  --color-superficie: var(--superficie);
+  --color-borda: var(--borda);
+  --color-grade: var(--grade);
+  --color-tinta: var(--tinta);
+  --color-tinta-2: var(--tinta-2);
+  --color-tinta-3: var(--tinta-3);
+  --color-destaque: var(--destaque);
+  --color-destaque-suave: var(--destaque-suave);
+  --color-sobre-destaque: var(--sobre-destaque);
+  --color-perigo: var(--perigo);
+  --color-serie: var(--serie);
+  --font-sans: "Inter", ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
+}
+
+body {
+  background: var(--fundo);
+  color: var(--tinta);
+  font-family: var(--font-sans);
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Números que se comparam em coluna (histórico, eixo) não dançam de largura. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}

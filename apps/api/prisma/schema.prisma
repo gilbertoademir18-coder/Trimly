@@ -1,0 +1,37 @@
+// Schema do Trimly.
+//
+// A conexão vem de `prisma.config.ts`, que lê DATABASE_URL do `.env` da raiz.
+// Cada módulo do app tem suas tabelas com prefixo próprio (`wl_` para o WL),
+// para que o banco continue legível quando outros módulos chegarem.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// Uma pesagem. No máximo uma por dia: pesar de novo no mesmo dia corrige a
+/// anterior em vez de criar ruído no gráfico.
+model WlPesagem {
+  /// O dia da pesagem, como dia do calendário (DATE, sem hora nem fuso).
+  data     DateTime @id @db.Date
+  pesoKg   Decimal  @map("peso_kg") @db.Decimal(5, 2)
+  nota     String?
+  criadoEm DateTime @default(now()) @map("criado_em") @db.Timestamptz
+  editadoEm DateTime @updatedAt @map("editado_em") @db.Timestamptz
+
+  @@map("wl_pesagem")
+}
+
+/// A meta do WL. Linha única (id sempre 1): é um app de uma pessoa só.
+model WlMeta {
+  id        Int      @id @default(1)
+  pesoAlvo  Decimal  @map("peso_alvo") @db.Decimal(5, 2)
+  alturaCm  Int?     @map("altura_cm")
+  editadoEm DateTime @updatedAt @map("editado_em") @db.Timestamptz
+
+  @@map("wl_meta")
+}

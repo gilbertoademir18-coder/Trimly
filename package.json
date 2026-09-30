@@ -1,0 +1,25 @@
+{
+  "name": "trimly",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/api",
+    "apps/web"
+  ],
+  "scripts": {
+    "dev": "concurrently -k -n api,web -c blue,magenta \"npm:dev -w apps/api\" \"npm:dev -w apps/web\"",
+    "build": "npm run build -w apps/web",
+    "start": "npm run start -w apps/api",
+    "typecheck": "npm run typecheck -w apps/api && npm run typecheck -w apps/web",
+    "test": "npm run test -w apps/api -w apps/web --if-present",
+    "icons": "npm run icons -w apps/web",
+    "db:migrate": "npm run db:migrate -w apps/api",
+    "db:studio": "npm run db:studio -w apps/api",
+    "backup": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/backup-banco.ps1",
+    "servir": "npm run db:deploy -w apps/api && npm run build && npm run start",
+    "db:deploy": "npm run db:deploy -w apps/api"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.5"
+  }
+}
