@@ -16,7 +16,7 @@ export function Inicio() {
         <p className="mt-1 text-tinta-2">Um passo de cada vez.</p>
       </div>
 
-      <ul className="grid gap-3 sm:grid-cols-2">
+      <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {MODULOS.map((m) => (
           <li key={m.rota}>
             <Link

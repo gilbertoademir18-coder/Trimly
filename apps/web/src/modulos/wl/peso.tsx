@@ -56,68 +56,83 @@ export function PaginaPeso() {
       <CabecalhoInterno titulo="Peso" />
       {erro && <Aviso texto={erro} />}
 
-      <FormPesagem
-        // Trocar a `key` remonta o formulário com os valores da pesagem
-        // escolhida — mais simples que sincronizar estado com efeito.
-        key={editando?.data ?? `hoje-${deHoje?.pesoKg ?? ""}`}
-        inicial={editando ?? deHoje}
-        hoje={hoje}
-        aoSalvar={async () => {
-          setEditando(null);
-          await carregar();
-        }}
-        aoCancelar={editando ? () => setEditando(null) : undefined}
-      />
+      {/*
+        No desktop, duas colunas: à esquerda o que se digita e os números, à
+        direita o gráfico e o histórico. No celular, a pilha de sempre — as
+        colunas são `contents` ali, e a meta desce para o fim com `order-last`.
+      */}
+      <div className="flex flex-col gap-5 lg:grid lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:items-start">
+        <div className="contents lg:flex lg:flex-col lg:gap-5">
+          <FormPesagem
+            // Trocar a `key` remonta o formulário com os valores da pesagem
+            // escolhida — mais simples que sincronizar estado com efeito.
+            key={editando?.data ?? `hoje-${deHoje?.pesoKg ?? ""}`}
+            inicial={editando ?? deHoje}
+            hoje={hoje}
+            aoSalvar={async () => {
+              setEditando(null);
+              await carregar();
+            }}
+            aoCancelar={editando ? () => setEditando(null) : undefined}
+          />
 
-      {resumo ? (
-        <>
-          <section className="grid grid-cols-2 gap-3">
-            <Numero rotulo="Peso atual" valor={`${formatarPeso(resumo.atual.pesoKg)} kg`} detalhe={`em ${formatarDia(resumo.atual.data)}`} grande />
-            <Numero
-              rotulo="Desde o início"
-              valor={`${formatarVariacao(resumo.variacao)} kg`}
-              detalhe={`desde ${formatarDia(resumo.inicial.data, true)}`}
-            />
-            {resumo.faltam !== null && (
-              <Numero
-                rotulo={resumo.faltam > 0 ? "Faltam" : "Meta"}
-                valor={resumo.faltam > 0 ? `${formatarPeso(resumo.faltam)} kg` : "Atingida"}
-                detalhe={`meta de ${formatarPeso(meta!.pesoAlvo)} kg`}
-              />
-            )}
-            {resumo.imc !== null && (
-              <Numero rotulo="IMC" valor={resumo.imc.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} detalhe={`altura ${meta!.alturaCm} cm`} />
-            )}
-          </section>
+          {resumo ? (
+            <>
+              <section className="grid grid-cols-2 gap-3">
+                <Numero rotulo="Peso atual" valor={`${formatarPeso(resumo.atual.pesoKg)} kg`} detalhe={`em ${formatarDia(resumo.atual.data)}`} grande />
+                <Numero
+                  rotulo="Desde o início"
+                  valor={`${formatarVariacao(resumo.variacao)} kg`}
+                  detalhe={`desde ${formatarDia(resumo.inicial.data, true)}`}
+                />
+                {resumo.faltam !== null && (
+                  <Numero
+                    rotulo={resumo.faltam > 0 ? "Faltam" : "Meta"}
+                    valor={resumo.faltam > 0 ? `${formatarPeso(resumo.faltam)} kg` : "Atingida"}
+                    detalhe={`meta de ${formatarPeso(meta!.pesoAlvo)} kg`}
+                  />
+                )}
+                {resumo.imc !== null && (
+                  <Numero rotulo="IMC" valor={resumo.imc.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} detalhe={`altura ${meta!.alturaCm} cm`} />
+                )}
+              </section>
 
-          {resumo.progresso !== null && <BarraProgresso progresso={resumo.progresso} />}
+              {resumo.progresso !== null && <BarraProgresso progresso={resumo.progresso} />}
+            </>
+          ) : (
+            <p className="text-sm text-tinta-2">Registre a primeira pesagem para começar o acompanhamento.</p>
+          )}
 
-          <section className="rounded-2xl border border-borda bg-superficie p-4">
-            <div className="mb-3 flex items-center justify-between gap-2">
-              <h2 className="font-medium">Evolução do peso (kg)</h2>
-              <div className="flex rounded-full bg-fundo p-0.5 text-xs">
-                {(["30d", "90d", "tudo"] as const).map((p) => (
-                  <button
-                    key={p}
-                    type="button"
-                    onClick={() => setPeriodo(p)}
-                    className={`rounded-full px-2.5 py-1 ${periodo === p ? "bg-superficie font-medium shadow-sm" : "text-tinta-2"}`}
-                  >
-                    {p === "tudo" ? "Tudo" : p}
-                  </button>
-                ))}
+          <div className="order-last lg:order-none">
+            <FormMeta meta={meta} aoSalvar={carregar} />
+          </div>
+        </div>
+
+        {resumo && (
+          <div className="contents lg:flex lg:flex-col lg:gap-5">
+            <section className="rounded-2xl border border-borda bg-superficie p-4">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <h2 className="font-medium">Evolução do peso (kg)</h2>
+                <div className="flex rounded-full bg-fundo p-0.5 text-xs">
+                  {(["30d", "90d", "tudo"] as const).map((p) => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setPeriodo(p)}
+                      className={`rounded-full px-2.5 py-1 ${periodo === p ? "bg-superficie font-medium shadow-sm" : "text-tinta-2"}`}
+                    >
+                      {p === "tudo" ? "Tudo" : p}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
-            <GraficoPeso pesagens={filtrarPeriodo(pesagens, periodo, hoje)} pesoAlvo={meta?.pesoAlvo ?? null} />
-          </section>
+              <GraficoPeso pesagens={filtrarPeriodo(pesagens, periodo, hoje)} pesoAlvo={meta?.pesoAlvo ?? null} />
+            </section>
 
-          <Historico pesagens={pesagens} aoEditar={setEditando} aoMudar={carregar} aoErro={setErro} />
-        </>
-      ) : (
-        <p className="text-sm text-tinta-2">Registre a primeira pesagem para começar o acompanhamento.</p>
-      )}
-
-      <FormMeta meta={meta} aoSalvar={carregar} />
+            <Historico pesagens={pesagens} aoEditar={setEditando} aoMudar={carregar} aoErro={setErro} />
+          </div>
+        )}
+      </div>
     </div>
   );
 }

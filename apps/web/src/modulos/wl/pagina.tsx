@@ -84,8 +84,14 @@ export function PaginaWl() {
 
   const hoje = diaLocal();
 
+  /*
+   * No desktop, três colunas lado a lado — jejum e atalhos | o dia | o mês —,
+   * para caber tudo sem rolar. No celular, a mesma pilha de sempre: a coluna
+   * da esquerda é `contents` ali (os filhos viram itens da pilha) e os atalhos
+   * descem para o fim com `order-last`.
+   */
   return (
-    <div className="space-y-5">
+    <div className="flex flex-col gap-5 lg:grid lg:grid-cols-3 lg:items-start">
       {/*
         Sem título à vista: a navegação do topo já marca em que módulo você
         está, e repetir "WL" logo abaixo só gastava a primeira tela do celular.
@@ -93,13 +99,33 @@ export function PaginaWl() {
         precisa de um cabeçalho para saber onde entrou.
       */}
       <h1 className="sr-only">WL</h1>
-      {erro && <Aviso texto={erro} />}
+      {erro && (
+        <div className="lg:col-span-3">
+          <Aviso texto={erro} />
+        </div>
+      )}
 
-      <BlocoJejum
-        versao={versaoJejum}
-        aoMudar={() => setVersaoJejum((v) => v + 1)}
-        aoAbrirHistorico={() => setJanela("jejum")}
-      />
+      <div className="contents lg:flex lg:flex-col lg:gap-5">
+        <BlocoJejum
+          versao={versaoJejum}
+          aoMudar={() => setVersaoJejum((v) => v + 1)}
+          aoAbrirHistorico={() => setJanela("jejum")}
+        />
+
+        <nav className="order-last grid gap-3 sm:grid-cols-3 lg:order-none lg:grid-cols-1">
+          <Atalho rota="/wl/peso" nome="Peso" descricao="Pesagens, meta, IMC e o gráfico." />
+          <Atalho
+            aoTocar={() => setJanela("acoes")}
+            nome="Ações"
+            descricao="O que soma, o que desconta, e as que têm opções."
+          />
+          <Atalho
+            aoTocar={() => setJanela("grupos")}
+            nome="Grupos"
+            descricao="Os tipos de dia: trabalho, fim de semana, viagem."
+          />
+        </nav>
+      </div>
 
       <CartaoDoDia
         dia={diaAberto}
@@ -112,20 +138,6 @@ export function PaginaWl() {
       />
 
       <Calendario hoje={hoje} selecionado={diaAberto} versao={versao} aoSelecionar={setDiaAberto} />
-
-      <nav className="grid gap-3 sm:grid-cols-3">
-        <Atalho rota="/wl/peso" nome="Peso" descricao="Pesagens, meta, IMC e o gráfico." />
-        <Atalho
-          aoTocar={() => setJanela("acoes")}
-          nome="Ações"
-          descricao="O que soma, o que desconta, e as que têm opções."
-        />
-        <Atalho
-          aoTocar={() => setJanela("grupos")}
-          nome="Grupos"
-          descricao="Os tipos de dia: trabalho, fim de semana, viagem."
-        />
-      </nav>
 
       <Modal aberto={janela === "acoes"} titulo="Ações" largura="larga" aoFechar={() => setJanela(null)}>
         <PainelAcoes grupos={grupos} aoMudar={() => void aoMudarCadastro()} />
