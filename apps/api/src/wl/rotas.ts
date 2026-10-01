@@ -1,8 +1,9 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Prisma } from "../generated/prisma/client.ts";
-import { dateParaDia, diaParaDate } from "../lib/datas.ts";
+import { dateParaDia } from "../lib/datas.ts";
 import { prisma } from "../lib/prisma.ts";
+import { Dia, primeiroErro } from "../lib/validacao.ts";
 
 /**
  * Rotas do módulo WL, montadas em `/api/wl`.
@@ -11,15 +12,6 @@ import { prisma } from "../lib/prisma.ts";
  * acumularia 0,1 + 0,2 = 0,30000000000000004 nas somas —, e é aqui, na saída,
  * que vira número de novo.
  */
-
-const Dia = z.string().transform((valor, ctx) => {
-  const data = diaParaDate(valor);
-  if (!data) {
-    ctx.addIssue({ code: "custom", message: "Data inválida: use AAAA-MM-DD." });
-    return z.NEVER;
-  }
-  return data;
-});
 
 // Limites largos de propósito: só barram erro de digitação (72 virando 7,2 ou
 // 720), sem opinar sobre o peso de ninguém.
@@ -58,13 +50,6 @@ const pesagemParaJson = (p: LinhaPesagem) => ({
 });
 
 const metaParaJson = (m: LinhaMeta) => ({ pesoAlvo: m.pesoAlvo.toNumber(), alturaCm: m.alturaCm });
-
-function primeiroErro(erro: z.ZodError | undefined): string {
-  const problema = erro?.issues[0];
-  if (!problema) return "Requisição inválida.";
-  const campo = problema.path.join(".");
-  return campo ? `${campo}: ${problema.message}` : problema.message;
-}
 
 // Pontos cabem em DECIMAL(5,2) e o sinal é quem diz se a ação soma ou
 // desconta. Zero é barrado aqui e no banco: ação que não vale nada só ocupa
