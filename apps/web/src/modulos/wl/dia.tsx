@@ -252,7 +252,8 @@ function LinhaAcao({
   aoMarcar: (quantidade: number) => void;
 }) {
   const feita = quantidade > 0;
-  const sinal = acao.pontos > 0 ? "+" : "−";
+  const negativa = acao.pontos < 0;
+  const sinal = negativa ? "−" : "+";
   const total = Math.round(Math.abs(acao.pontos) * quantidade * 100) / 100;
 
   return (
@@ -291,9 +292,15 @@ function LinhaAcao({
           onClick={() => aoMarcar(feita ? 0 : 1)}
           disabled={ocupado}
           aria-pressed={feita}
+          // Marcada, a ação negativa fica vermelha: ali o botão conta um
+          // deslize, e pintá-lo da mesma cor de "beber água" diria que as duas
+          // coisas são a mesma. (Diferente da variação de peso, que o app
+          // mantém neutra de propósito — aquilo é oscilação, isto é escolha.)
           className={
             "rounded-xl px-3 py-1.5 text-sm font-medium " +
-            (feita ? "bg-destaque text-sobre-destaque" : "border border-borda text-tinta-2")
+            (feita
+              ? (negativa ? "bg-perigo" : "bg-destaque") + " text-sobre-destaque"
+              : "border border-borda text-tinta-2")
           }
         >
           {feita ? "Feito" : "Marcar"}
