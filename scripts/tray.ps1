@@ -166,17 +166,22 @@ function Url-Tailnet {
       vermelho o servidor caiu ou não subiu
       nenhum   subindo — estado passageiro, não vale alarme
 
-    O selo vai no canto inferior direito, igual ao do NihongoHub: com os dois
-    ícones na mesma bandeja, o estado aparece sempre no mesmo lugar, e não dá
-    para confundir qual app está no ar. O anel branco por baixo o mantém
-    legível sobre bandeja clara ou escura.
+    O selo vai no canto inferior direito, igual ao do NihongoHub e do
+    Creativa: com os ícones na mesma bandeja, o estado aparece sempre no
+    mesmo lugar, e não dá para confundir qual app está no ar.
+
+    O desenho segue o do reWASD: o ícone recortado em círculo, e o selo com
+    um anel preto em volta, que o separa do desenho e o mantém legível sobre
+    bandeja clara ou escura. O selo invade a borda do círculo de propósito —
+    é o que faz ele parecer pousado em cima, e não um pedaço do ícone.
 #>
-function Novo-Icone([bool]$apagado, [string]$selo) {
+function Novo-Bitmap([bool]$apagado, [string]$selo) {
     $origem = [System.Drawing.Image]::FromFile((Join-Path $RAIZ "apps\web\public\icon-192.png"))
     try {
-        $tela = New-Object System.Drawing.Bitmap 32, 32
-        $g = [System.Drawing.Graphics]::FromImage($tela)
-        $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+        # Primeiro o desenho inteiro, colorido ou cinza, numa tela à parte...
+        $plano = New-Object System.Drawing.Bitmap 32, 32
+        $gp = [System.Drawing.Graphics]::FromImage($plano)
+        $gp.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
 
         $atrib = New-Object System.Drawing.Imaging.ImageAttributes
         if ($apagado) {
@@ -190,25 +195,41 @@ function Novo-Icone([bool]$apagado, [string]$selo) {
         }
 
         $destino = New-Object System.Drawing.Rectangle 0, 0, 32, 32
-        $g.DrawImage($origem, $destino, 0, 0, $origem.Width, $origem.Height,
-                     [System.Drawing.GraphicsUnit]::Pixel, $atrib)
+        $gp.DrawImage($origem, $destino, 0, 0, $origem.Width, $origem.Height,
+                      [System.Drawing.GraphicsUnit]::Pixel, $atrib)
+        $gp.Dispose()
+
+        # ...depois pintado como textura de um círculo. Recortar com SetClip
+        # deixaria a borda serrilhada: o recorte não tem antisserrilhado, o
+        # preenchimento tem.
+        $tela = New-Object System.Drawing.Bitmap 32, 32
+        $g = [System.Drawing.Graphics]::FromImage($tela)
+        $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+        $textura = New-Object System.Drawing.TextureBrush $plano
+        $g.FillEllipse($textura, 0, 0, 32, 32)
+        $textura.Dispose()
+        $plano.Dispose()
 
         if ($selo) {
             $cor = if ($selo -eq "verde") {
-                [System.Drawing.Color]::FromArgb(255, 34, 170, 80)
+                [System.Drawing.Color]::FromArgb(255, 70, 200, 40)
             } else {
-                [System.Drawing.Color]::FromArgb(255, 205, 40, 40)
+                [System.Drawing.Color]::FromArgb(255, 220, 45, 45)
             }
-            $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
-            $g.FillEllipse([System.Drawing.Brushes]::White, 16, 16, 16, 16)
+            $g.FillEllipse([System.Drawing.Brushes]::Black, 15, 15, 17, 17)
             $pincel = New-Object System.Drawing.SolidBrush $cor
-            $g.FillEllipse($pincel, 18, 18, 12, 12)
+            $g.FillEllipse($pincel, 17.5, 17.5, 12, 12)
             $pincel.Dispose()
         }
 
         $g.Dispose()
-        return [System.Drawing.Icon]::FromHandle($tela.GetHicon())
+        return $tela
     } finally { $origem.Dispose() }
+}
+
+function Novo-Icone([bool]$apagado, [string]$selo) {
+    $tela = Novo-Bitmap $apagado $selo
+    return [System.Drawing.Icon]::FromHandle($tela.GetHicon())
 }
 
 # ---------------------------------------------------------------------------
