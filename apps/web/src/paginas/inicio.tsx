@@ -5,7 +5,7 @@ import { Link } from "react-router";
  * e ganham uma rota em `main.tsx`.
  */
 const MODULOS = [
-  { rota: "/wl", nome: "WL", descricao: "Pesagens, meta e evolução." },
+  { rota: "/wl", nome: "WL", descricao: "A pontuação de cada dia, o calendário e o peso." },
 ];
 
 export function Inicio() {

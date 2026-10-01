@@ -35,3 +35,109 @@ model WlMeta {
 
   @@map("wl_meta")
 }
+
+/// Uma ação que entra na pontuação do dia: `pontos` positivo soma, negativo
+/// desconta. Nunca zero — ação que não vale nada não é ação.
+///
+/// DECIMAL e não float porque estes números entram em somas: 0,1 + 0,2 daria
+/// 0,30000000000000004, o mesmo motivo do peso.
+model WlAcao {
+  id     Int     @id @default(autoincrement())
+  nome   String
+  pontos Decimal @db.Decimal(5, 2)
+
+  /// "1 copo de água" conta várias vezes no mesmo dia; "treinar", não.
+  repetivel Boolean @default(false)
+
+  /// Quantas vezes a ação é esperada num dia completo — 8, para os copos de
+  /// água. É o que define quanto ela contribui para o "dia perfeito"; sem
+  /// isso, uma ação repetível não teria denominador e beber muita água
+  /// estouraria os 100% sozinha. Nas não repetíveis é sempre 1.
+  alvoDiario Int @default(1) @map("alvo_diario")
+
+  /// Arquivar em vez de apagar. Uma ação com histórico não pode sumir: os
+  /// dias passados ficariam com registros órfãos e nota sem explicação.
+  ativa Boolean @default(true)
+
+  /// A ordem em que aparecem na tela do dia. Empate desempata por nome.
+  ordem Int @default(0)
+
+  criadoEm  DateTime @default(now()) @map("criado_em") @db.Timestamptz
+  editadoEm DateTime @updatedAt @map("editado_em") @db.Timestamptz
+
+  registros WlRegistro[]
+
+  @@map("wl_acao")
+}
+
+/// Uma ação feita (ou cometida) num dia.
+///
+/// `pontosNaEpoca` congela quanto a ação valia no momento do registro. Sem
+/// isso, corrigir o peso de um hábito hoje reescreveria silenciosamente a nota
+/// de todos os dias passados — e um calendário que muda sozinho não serve para
+/// olhar para trás.
+model WlRegistro {
+  data          DateTime @db.Date
+  acaoId        Int      @map("acao_id")
+  quantidade    Int      @default(1)
+  pontosNaEpoca Decimal  @map("pontos_na_epoca") @db.Decimal(5, 2)
+
+  criadoEm  DateTime @default(now()) @map("criado_em") @db.Timestamptz
+  editadoEm DateTime @updatedAt @map("editado_em") @db.Timestamptz
+
+  // Restrict e não Cascade: apagar uma ação usada é erro, não decisão em
+  // cascata. O caminho é arquivar (`ativa = false`).
+  acao WlAcao @relation(fields: [acaoId], references: [id], onDelete: Restrict)
+
+  @@id([data, acaoId])
+  @@map("wl_registro")
+}
+
+/// O denominador de um dia: a soma dos pontos das ações positivas que estavam
+/// ativas quando o dia foi mexido pela última vez.
+///
+/// Congelado pelo mesmo motivo que `pontosNaEpoca`. Com "dia perfeito = 100%",
+/// cadastrar um hábito novo aumentaria o total possível e rebaixaria todo o
+/// passado de uma vez. Aqui, mexer no cadastro vale de hoje em diante.
+model WlDia {
+  data            DateTime @id @db.Date
+  pontosPossiveis Decimal  @map("pontos_possiveis") @db.Decimal(6, 2)
+
+  /// A refeição escolhida no dia, e quanto ela valia na época.
+  ///
+  /// Coluna no dia, e não tabela de ligação: "uma refeição por dia" vira
+  /// estrutura, e não regra que alguém pode esquecer de aplicar. Os pontos vêm
+  /// congelados junto, pelo mesmo motivo do `pontos_na_epoca` dos registros.
+  refeicaoId            Int?     @map("refeicao_id")
+  refeicaoPontosNaEpoca Decimal? @map("refeicao_pontos_na_epoca") @db.Decimal(5, 2)
+
+  editadoEm DateTime @updatedAt @map("editado_em") @db.Timestamptz
+
+  refeicao WlRefeicao? @relation(fields: [refeicaoId], references: [id], onDelete: Restrict)
+
+  @@map("wl_dia")
+}
+
+/// Uma refeição saudável do cardápio: escolhe-se uma por dia.
+///
+/// Os pontos são sempre positivos. O "dia perfeito" conta a melhor refeição
+/// cadastrada — somar todas faria um 100% inatingível, já que só cabe uma —, e
+/// um valor negativo quebraria esse máximo.
+model WlRefeicao {
+  id        Int     @id @default(autoincrement())
+  nome      String
+  descricao String?
+  pontos    Decimal @db.Decimal(5, 2)
+
+  /// Arquivar em vez de apagar, como nas ações: refeição já escolhida em algum
+  /// dia não pode sumir sem deixar a nota daquele dia sem explicação.
+  ativa Boolean @default(true)
+  ordem Int     @default(0)
+
+  criadoEm  DateTime @default(now()) @map("criado_em") @db.Timestamptz
+  editadoEm DateTime @updatedAt @map("editado_em") @db.Timestamptz
+
+  dias WlDia[]
+
+  @@map("wl_refeicao")
+}

@@ -28,7 +28,13 @@ export default defineConfig({
           // O Android recorta este em círculo; por isso ele tem margem extra.
           { src: "/icon-maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
         ],
-        shortcuts: [{ name: "Registrar peso", short_name: "Pesar", url: "/wl" }],
+        // O atalho aponta para a tela onde a ação acontece. "Registrar peso"
+        // levava a /wl, que depois virou a tela de pontuação — e o atalho
+        // passaria a abrir a tela errada em silêncio.
+        shortcuts: [
+          { name: "Pontuação de hoje", short_name: "Hoje", url: "/wl" },
+          { name: "Registrar peso", short_name: "Pesar", url: "/wl/peso" },
+        ],
       },
       workbox: {
         // O service worker guarda a casca do app (HTML, JS, CSS, ícones) para

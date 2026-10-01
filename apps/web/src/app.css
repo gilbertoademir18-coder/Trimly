@@ -57,11 +57,44 @@
   --font-sans: "Inter", ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
 }
 
+/*
+ * O espaço da barra de rolagem fica reservado mesmo quando não há barra.
+ *
+ * Sem isto, travar o scroll para abrir uma modal faz a barra sumir, a página
+ * fica ~15px mais larga e tudo salta para o lado — e salta de volta ao fechar.
+ * O `stable` mantém a calha reservada inclusive sob `overflow: hidden`, que é
+ * justamente como a modal trava o fundo.
+ *
+ * No celular não custa nada: a regra só vale para barra clássica, e as de
+ * sobreposição do Android e do iOS não ocupam largura nenhuma.
+ */
+html {
+  scrollbar-gutter: stable;
+}
+
 body {
   background: var(--fundo);
   color: var(--tinta);
   font-family: var(--font-sans);
   -webkit-tap-highlight-color: transparent;
+}
+
+/*
+ * Mãozinha em botão.
+ *
+ * O preflight do Tailwind 4 não põe `cursor: pointer` em `button` — segue o
+ * padrão do navegador, que é a setinha. Numa página isso faz botão parecer
+ * texto, e o app é quase todo botão.
+ *
+ * Aqui e não classe por classe: são mais de vinte botões, e o próximo a ser
+ * escrito nasceria sem de novo. Desabilitado fica de fora: ali a mãozinha
+ * prometeria um clique que não acontece.
+ */
+@layer base {
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
 }
 
 /* Números que se comparam em coluna (histórico, eixo) não dançam de largura. */

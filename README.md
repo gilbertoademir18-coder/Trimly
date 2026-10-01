@@ -1,7 +1,7 @@
 # Trimly
 
 App de acompanhamento de desenvolvimento pessoal, em módulos. O primeiro é o
-**WL**: pesagens, meta e evolução.
+**WL**: pesagens, meta, evolução e a pontuação de cada dia.
 
 PWA em React + Vite, API em Node (Fastify + Prisma 7) e PostgreSQL local, num
 monorepo com npm workspaces. Acessível do celular pelo Tailscale.
@@ -60,9 +60,8 @@ Trimly) — o README de lá conta os porquês em detalhe.
 | cinza, sem selo | subindo |
 | cinza, **selo vermelho** | caiu ou não subiu — veja o log |
 
-O selo fica no canto **superior** direito (no NihongoHub é no inferior): é onde
-o desenho do Trimly tem espaço vazio, e embaixo ele cobriria o ponto em que a
-linha termina.
+O selo fica no canto **inferior** direito, igual ao do NihongoHub: com os dois
+ícones na mesma bandeja, o estado aparece sempre no mesmo lugar.
 
 ### O tray roda o app "de verdade", não o de desenvolvimento
 
@@ -100,7 +99,16 @@ apps/
     src/wl/rotas.ts       /api/wl/*
   web/                    React 19 + Vite + Tailwind 4 + vite-plugin-pwa
     src/main.tsx          Rotas: cada módulo é uma rota de primeiro nível
-    src/modulos/wl/       Página, gráfico e contas (calculos.ts, puro e testado)
+    src/modal.tsx         Janela modal, sobre o <dialog> nativo
+    src/modulos/wl/       O módulo WL, em duas telas:
+      pagina.tsx            /wl       nota do dia + calendário
+      peso.tsx              /wl/peso  pesagens, meta, IMC e gráfico
+      acoes.tsx             O cadastro de ações, numa modal aberta de /wl
+      refeicoes.tsx         O cardápio, noutra modal de /wl
+      dia.tsx               O cartão de pontuação: ações e refeição do dia
+      calendario.tsx        O mês em quadradinhos
+      grafico.tsx           A linha do peso, em SVG puro
+      calculos.ts           As contas, puras e testadas
     scripts/gerar-icones.mjs
 scripts/
   tray.ps1                Ícone da bandeja
@@ -114,6 +122,13 @@ scripts/
 1. Tabelas no `schema.prisma` com prefixo próprio, e `npm run db:migrate`.
 2. `apps/api/src/<modulo>/rotas.ts`, registrado em `server.ts` com prefixo `/api/<modulo>`.
 3. `apps/web/src/modulos/<modulo>/`, uma rota em `main.tsx` e um cartão em `paginas/inicio.tsx`.
+
+A tela de primeiro nível é a do uso diário. O que se ajusta de vez em quando
+fica a um toque de distância, e não no meio do caminho — como sub-rota quando
+é um assunto inteiro (`/wl/peso`), ou como modal quando é uma pausa no meio do
+que se estava fazendo (o cadastro de ações). A modal usa o `<dialog>` nativo:
+Esc, foco preso dentro e fundo inerte já vêm prontos, e reimplementar isso à
+mão é onde a acessibilidade costuma se perder.
 
 ## Decisões que vale conhecer
 
@@ -146,9 +161,50 @@ menor peso; mais longe, achataria a linha num risco sem relevo.
 **Prisma fixado em `^7.10.0`.** A tag `latest` do pacote aponta para um RC da
 versão 8.
 
+### A pontuação do dia
+
+**Um dia perfeito vale 100%.** O denominador é a soma do que as ações positivas
+valem, contando o alvo diário de cada uma (8 copos de água a 0,5 ponto entram
+como 4). As negativas descontam, e a nota fica presa entre 0 e 100: abaixo não
+haveria fundo, e acima a barra deixaria de significar "completo".
+
+**Ação repetível precisa de alvo diário.** Sem ele, "1 copo de água, +0,5" não
+teria denominador — dois copos ou vinte dariam dias igualmente indefinidos. O
+alvo é o que fecha a conta; nas ações de marcar uma vez só, ele é 1.
+
+**A refeição do dia entra pela melhor, não pela soma.** O cardápio tem várias
+refeições, cada uma com seus pontos, mas só cabe uma por dia — e é por isso que
+ela é coluna de `wl_dia`, e não uma tabela de ligação: "uma por dia" vira
+estrutura em vez de regra que alguém esquece de aplicar. No denominador entra
+só a **melhor** refeição cadastrada; somar todas faria um 100% que ninguém
+alcança, já que seguir duas é impossível. Escolher uma que vale menos rende
+crédito parcial, que é o comportamento desejado. Os pontos são sempre positivos:
+uma refeição que descontasse quebraria esse máximo.
+
+**O passado não se mexe.** Cada registro guarda quantos pontos a ação valia na
+época (`pontos_na_epoca`), a refeição escolhida guarda o seu
+(`refeicao_pontos_na_epoca`), e cada dia guarda o denominador que vigorava nele
+(`wl_dia.pontos_possiveis`). Sem isso, cadastrar um hábito novo hoje rebaixaria
+em silêncio a nota de todos os dias anteriores — e um calendário que muda
+sozinho não serve para olhar para trás. Reabrir um dia o refotografa inteiro:
+numerador e denominador voltam juntos ao cadastro de agora, porque congelar só
+um dos dois daria nota acima de 100% (ação nova somando sem entrar no total) ou
+menor do que o dia mereceu.
+
+**Dia sem registro é neutro, não é zero.** Ele não ganha linha em `wl_dia`,
+aparece apagado no calendário e fica fora das médias. Esquecer de anotar não é
+o mesmo que um dia ruim, e tratar os dois igual puniria justamente quem passou
+o fim de semana longe do celular.
+
+**Ação ou refeição com histórico se arquiva, não se apaga.** A chave estrangeira é RESTRICT
+e a API responde 409 explicando o porquê: apagar deixaria dias com nota sem
+explicação. Arquivada, a ação some da tela do dia e continua explicando o
+passado — e ainda dá para desmarcá-la num dia antigo, só não marcar de novo.
+
 ## Próximos passos
 
 - Média móvel de 7 dias no gráfico (suaviza a oscilação diária)
+- Sequência de dias bons (streak) e média móvel da pontuação
 - Previsão de quando a meta será atingida, pela tendência recente
 - Medidas corporais (cintura, etc.) no WL
 - Próximos módulos do Trimly
