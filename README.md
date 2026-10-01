@@ -106,6 +106,7 @@ apps/
       pagina.tsx            /wl       jejum + nota do dia + calendário
       peso.tsx              /wl/peso  pesagens, meta, IMC e gráfico
       acoes.tsx             O cadastro de ações, numa modal aberta de /wl
+      grupos.tsx            Os tipos de dia, noutra modal de /wl
       dia.tsx               O cartão de pontuação e as ações do dia
       calendario.tsx        O mês em quadradinhos
       grafico.tsx           A linha do peso, em SVG puro
@@ -174,6 +175,26 @@ haveria fundo, e acima a barra deixaria de significar "completo".
 **Ação repetível precisa de alvo diário.** Sem ele, "1 copo de água, +0,5" não
 teria denominador — dois copos ou vinte dariam dias igualmente indefinidos. O
 alvo é o que fecha a conta; nas ações de marcar uma vez só, ele é 1.
+
+**O dia tem um grupo, e é ele que decide tudo.** Dia de trabalho pede hábitos
+diferentes de fim de semana, e fim de semana fora de casa pede outros. Cada
+grupo é um tipo de dia; o grupo escolhido decide tanto as ações que aparecem
+quanto o denominador — um sábado deixa de ser cobrado pelas metas de uma
+segunda. Uma ação pode estar em vários grupos (`wl_acao_grupo` é muitos para
+muitos), e **ação fora de grupo não aparece em dia nenhum**: é o preço de o
+grupo ser recorte de verdade, e a tela do cadastro avisa quando alguma fica
+solta.
+
+**O grupo do dia vem do dia da semana, até alguém dizer o contrário.** Cada
+grupo declara em que dias entra sozinho (`dias_da_semana`, 0 = domingo), e
+quem resolve é o servidor, em `resolverGrupo` — a regra num lugar só, porque
+em dois ela divergiria. O dia da semana sai da própria coluna `DATE`, que não
+tem hora nem fuso: ler `getUTCDay()` ali é exato. Grupo que depende de onde
+você vai passar o fim de semana fica sem dias marcados e só entra à mão.
+
+Trocar o grupo de um dia **não apaga o que já foi marcado**: uma ação fora do
+grupo novo some da tela, mas o registro fica e volta se a troca for desfeita.
+Apagar seria perder trabalho por um toque que pode ter sido engano.
 
 **Ação com opções entra pela melhor, não pela soma.** Uma ação pode ter
 alternativas — "qual refeição?", "qual treino?" —, cada uma com seus pontos, e
@@ -263,6 +284,7 @@ dia, o formulário é a rede de segurança.
 - Média móvel de 7 dias no gráfico (suaviza a oscilação diária)
 - Sequência de dias bons (streak) e média móvel da pontuação
 - Jejum: média de horas por semana, e o jejum mais longo
+- Grupo sugerido também pelo histórico (dois sábados seguidos na mesma casa)
 - Previsão de quando a meta será atingida, pela tendência recente
 - Medidas corporais (cintura, etc.) no WL
 - Próximos módulos do Trimly

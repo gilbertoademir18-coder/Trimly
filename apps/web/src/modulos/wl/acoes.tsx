@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { wlApi, type AcaoNova } from "./api.ts";
 import { Aviso } from "./aviso.tsx";
-import { opcoesAtivas, pontosPossiveis, temOpcoes, type Acao } from "./calculos.ts";
+import { opcoesAtivas, pontosPossiveis, temOpcoes, type Acao, type Grupo } from "./calculos.ts";
 
 /**
  * O cadastro de ações do WL, para viver dentro de uma modal.
@@ -12,8 +12,11 @@ import { opcoesAtivas, pontosPossiveis, temOpcoes, type Acao } from "./calculos.
  *
  * O `aoMudar` avisa quem abriu que o catálogo mexeu, para a tela de trás
  * recarregar as ações e o total possível do dia.
+ *
+ * Os `grupos` vêm de fora porque é no painel deles que se mandam: aqui eles só
+ * aparecem como botões para marcar em quais a ação entra.
  */
-export function PainelAcoes({ aoMudar }: { aoMudar?: () => void }) {
+export function PainelAcoes({ grupos, aoMudar }: { grupos: Grupo[]; aoMudar?: () => void }) {
   const [acoes, setAcoes] = useState<Acao[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   // `null` é o formulário em branco, que fica sempre à vista. Editar uma ação
@@ -55,24 +58,43 @@ export function PainelAcoes({ aoMudar }: { aoMudar?: () => void }) {
   const positivas = ativas.filter((a) => !temOpcoes(a) && (a.pontos ?? 0) > 0);
   const negativas = ativas.filter((a) => !temOpcoes(a) && (a.pontos ?? 0) < 0);
   const arquivadas = acoes.filter((a) => !a.ativa);
-  const perfeito = pontosPossiveis(acoes);
+  const gruposAtivos = grupos.filter((g) => g.ativo);
+  // Ação fora de grupo não aparece em dia nenhum — e é fácil criar uma e
+  // esquecer de encaixá-la, então a tela avisa em vez de deixar sumir calada.
+  const semGrupo = acoes.filter((a) => a.ativa && a.grupos.length === 0);
 
   return (
     <div className="space-y-4">
       {erro && <Aviso texto={erro} />}
 
       <section className="rounded-2xl border border-borda bg-superficie p-4">
-        <div className="flex items-baseline justify-between gap-2">
-          <span className="text-sm text-tinta-2">Um dia perfeito vale</span>
-          <span className="tabular text-2xl font-semibold tracking-tight">{perfeito} pts</span>
-        </div>
+        <h3 className="text-sm font-medium">O dia perfeito de cada grupo</h3>
+        {gruposAtivos.length === 0 ? (
+          <p className="mt-1 text-xs text-tinta-3">Nenhum grupo ainda. Crie um no painel de grupos.</p>
+        ) : (
+          <ul className="mt-2 space-y-1">
+            {gruposAtivos.map((g) => (
+              <li key={g.id} className="flex items-baseline justify-between gap-2 text-sm">
+                <span className="min-w-0 truncate text-tinta-2">{g.nome}</span>
+                <span className="tabular font-medium">
+                  {pontosPossiveis(acoes.filter((a) => a.grupos.includes(g.id)))} pts
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
         <p className="mt-2 text-xs text-tinta-3">
-          É a soma das ações positivas, pelo alvo diário de cada uma, mais a melhor opção de cada ação
-          que tem opções — e é esse total que vale 100%. Mexer aqui vale de hoje em diante: a nota de
-          hoje é recalculada na hora, e os dias anteriores guardam o que as ações valiam na época —
-          eles só mudam se você reabrir um deles e mexer.
+          Cada grupo tem o seu 100%: a soma das ações positivas dele, pelo alvo diário de cada uma,
+          mais a melhor opção das que têm opções. Mexer aqui vale de hoje em diante — a nota de hoje
+          é recalculada na hora, e os dias anteriores guardam o que as ações valiam na época.
         </p>
       </section>
+
+      {semGrupo.length > 0 && (
+        <p className="rounded-xl border border-atencao px-3 py-2 text-xs text-atencao">
+          Fora de grupo, e por isso sem aparecer em dia nenhum: {semGrupo.map((a) => a.nome).join(", ")}.
+        </p>
+      )}
 
       <FormAcao
         // A key remonta o formulário ao trocar de ação e ao terminar um
@@ -80,6 +102,7 @@ export function PainelAcoes({ aoMudar }: { aoMudar?: () => void }) {
         // formulário de pesagem.
         key={editando ? `acao-${editando.id}` : `nova-${criadas}`}
         acao={editando}
+        grupos={gruposAtivos}
         aoSalvar={async () => {
           if (!editando) setCriadas((n) => n + 1);
           setEditando(null);
@@ -167,6 +190,8 @@ function Linha({
       pontos: o.pontos,
       ativa: o.ativa,
     })),
+    // Vão junto: sem eles no corpo, o servidor largaria os grupos da ação.
+    grupos: acao.grupos,
   };
 
   const resumo = temOpcoes(acao)
@@ -241,10 +266,12 @@ const OPCAO_VAZIA: OpcaoForm = { nome: "", pontos: "", desconta: false, ativa: t
  */
 function FormAcao({
   acao,
+  grupos,
   aoSalvar,
   aoCancelar,
 }: {
   acao: Acao | null;
+  grupos: Grupo[];
   aoSalvar: () => Promise<void>;
   aoCancelar?: () => void;
 }) {
@@ -263,8 +290,13 @@ function FormAcao({
       ativa: o.ativa,
     })),
   );
+  const [emGrupos, setEmGrupos] = useState<number[]>(acao?.grupos ?? []);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+
+  function alternarGrupo(id: number) {
+    setEmGrupos((atuais) => (atuais.includes(id) ? atuais.filter((x) => x !== id) : [...atuais, id]));
+  }
 
   function mudarOpcao(i: number, campos: Partial<OpcaoForm>) {
     setOpcoes((atuais) => atuais.map((o, j) => (j === i ? { ...o, ...campos } : o)));
@@ -318,6 +350,7 @@ function FormAcao({
         ativa: acao?.ativa ?? true,
         ordem: acao?.ordem ?? 0,
         opcoes: convertidas,
+        grupos: emGrupos,
       };
     } else {
       const valor = lerPontos(pontos, desconta);
@@ -339,6 +372,7 @@ function FormAcao({
         ordem: acao?.ordem ?? 0,
         // Lista vazia é o pedido para o servidor largar as opções que havia.
         opcoes: [],
+        grupos: emGrupos,
       };
     }
 
@@ -393,6 +427,37 @@ function FormAcao({
             />
             Tem opções (escolho uma por dia)
           </label>
+
+          <div>
+            <span className="mb-1 block text-sm text-tinta-2">Aparece nos grupos</span>
+            {grupos.length === 0 ? (
+              <p className="text-xs text-tinta-3">Nenhum grupo cadastrado ainda.</p>
+            ) : (
+              <div className="flex flex-wrap gap-1">
+                {grupos.map((g) => (
+                  <button
+                    key={g.id}
+                    type="button"
+                    onClick={() => alternarGrupo(g.id)}
+                    aria-pressed={emGrupos.includes(g.id)}
+                    className={
+                      "rounded-lg px-2.5 py-1.5 text-sm font-medium " +
+                      (emGrupos.includes(g.id)
+                        ? "bg-destaque text-sobre-destaque"
+                        : "border border-borda text-tinta-2")
+                    }
+                  >
+                    {g.nome}
+                  </button>
+                ))}
+              </div>
+            )}
+            {emGrupos.length === 0 && grupos.length > 0 && (
+              <span className="mt-1 block text-xs text-atencao">
+                Sem grupo, a ação não aparece em dia nenhum.
+              </span>
+            )}
+          </div>
         </div>
 
         <div className="space-y-3">

@@ -5,12 +5,13 @@ import { PainelAcoes } from "./acoes.tsx";
 import { wlApi } from "./api.ts";
 import { Aviso } from "./aviso.tsx";
 import { Calendario } from "./calendario.tsx";
-import { diaLocal, type Acao } from "./calculos.ts";
+import { diaLocal, type Acao, type Grupo } from "./calculos.ts";
 import { CartaoDoDia } from "./dia.tsx";
+import { PainelGrupos } from "./grupos.tsx";
 import { BlocoJejum, PainelJejum } from "./jejum.tsx";
 
 /** Qual janela está aberta, se alguma. */
-type Janela = "acoes" | "jejum" | null;
+type Janela = "acoes" | "grupos" | "jejum" | null;
 
 /**
  * A tela do dia a dia do WL: a nota de hoje, o que a forma e o mês inteiro
@@ -28,6 +29,7 @@ type Janela = "acoes" | "jejum" | null;
  */
 export function PaginaWl() {
   const [acoes, setAcoes] = useState<Acao[] | null>(null);
+  const [grupos, setGrupos] = useState<Grupo[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   // O dia aberto no cartão de pontuação. Trocar de dia no calendário só muda
   // este estado: o cartão busca o dia escolhido sozinho.
@@ -43,7 +45,9 @@ export function PaginaWl() {
 
   const carregar = useCallback(async () => {
     try {
-      setAcoes(await wlApi.acoes());
+      const [a, g] = await Promise.all([wlApi.acoes(), wlApi.grupos()]);
+      setAcoes(a);
+      setGrupos(g);
       setErro(null);
     } catch (e) {
       setErro((e as Error).message);
@@ -76,7 +80,7 @@ export function PaginaWl() {
   }, [carregar]);
 
   if (erro && !acoes) return <Aviso texto={erro} />;
-  if (!acoes) return <p className="text-tinta-3">Carregando…</p>;
+  if (!acoes || !grupos) return <p className="text-tinta-3">Carregando…</p>;
 
   const hoje = diaLocal();
 
@@ -100,24 +104,40 @@ export function PaginaWl() {
       <CartaoDoDia
         dia={diaAberto}
         acoes={acoes}
+        grupos={grupos}
         versaoCadastro={versaoCadastro}
         aoMudar={() => setVersao((v) => v + 1)}
         aoAbrirAcoes={() => setJanela("acoes")}
+        aoAbrirGrupos={() => setJanela("grupos")}
       />
 
       <Calendario hoje={hoje} selecionado={diaAberto} versao={versao} aoSelecionar={setDiaAberto} />
 
-      <nav className="grid gap-3 sm:grid-cols-2">
+      <nav className="grid gap-3 sm:grid-cols-3">
         <Atalho rota="/wl/peso" nome="Peso" descricao="Pesagens, meta, IMC e o gráfico." />
         <Atalho
           aoTocar={() => setJanela("acoes")}
           nome="Ações"
           descricao="O que soma, o que desconta, e as que têm opções."
         />
+        <Atalho
+          aoTocar={() => setJanela("grupos")}
+          nome="Grupos"
+          descricao="Os tipos de dia: trabalho, fim de semana, viagem."
+        />
       </nav>
 
       <Modal aberto={janela === "acoes"} titulo="Ações" largura="larga" aoFechar={() => setJanela(null)}>
-        <PainelAcoes aoMudar={() => void aoMudarCadastro()} />
+        <PainelAcoes grupos={grupos} aoMudar={() => void aoMudarCadastro()} />
+      </Modal>
+
+      <Modal
+        aberto={janela === "grupos"}
+        titulo="Grupos de ações"
+        largura="larga"
+        aoFechar={() => setJanela(null)}
+      >
+        <PainelGrupos acoes={acoes} aoMudar={() => void aoMudarCadastro()} />
       </Modal>
 
       <Modal aberto={janela === "jejum"} titulo="Jejuns" aoFechar={() => setJanela(null)}>

@@ -70,8 +70,52 @@ model WlAcao {
 
   registros WlRegistro[]
   opcoes    WlAcaoOpcao[]
+  grupos    WlAcaoGrupo[]
 
   @@map("wl_acao")
+}
+
+/// Um conjunto de ações para um tipo de dia.
+///
+/// Dia de trabalho pede hábitos diferentes de fim de semana, e fim de semana
+/// fora de casa pede outros — sem isso, o "dia perfeito" de um sábado seria
+/// cobrado pelas metas de uma segunda.
+model WlGrupo {
+  id   Int    @id @default(autoincrement())
+  nome String
+
+  /// Em que dias da semana este grupo entra sozinho: 0 = domingo … 6 = sábado.
+  /// Vazio significa "só manual" — é o caso do grupo que depende de onde você
+  /// vai passar o fim de semana, que calendário nenhum adivinha.
+  diasDaSemana Int[] @map("dias_da_semana")
+
+  /// Arquivar em vez de apagar, como no resto: grupo já usado por algum dia não
+  /// pode sumir sem deixar a nota daquele dia sem explicação.
+  ativo Boolean @default(true)
+  ordem Int     @default(0)
+
+  criadoEm  DateTime @default(now()) @map("criado_em") @db.Timestamptz
+  editadoEm DateTime @updatedAt @map("editado_em") @db.Timestamptz
+
+  acoes WlAcaoGrupo[]
+  dias  WlDia[]
+
+  @@map("wl_grupo")
+}
+
+/// A ligação entre ação e grupo. Uma ação pode estar em vários.
+model WlAcaoGrupo {
+  acaoId  Int @map("acao_id")
+  grupoId Int @map("grupo_id")
+
+  // Cascade dos dois lados: esta linha não é um dado em si, é só a ligação.
+  // Apagar a ação ou o grupo (quando permitido) leva a ligação junto.
+  acao  WlAcao  @relation(fields: [acaoId], references: [id], onDelete: Cascade)
+  grupo WlGrupo @relation(fields: [grupoId], references: [id], onDelete: Cascade)
+
+  @@id([acaoId, grupoId])
+  @@index([grupoId])
+  @@map("wl_acao_grupo")
 }
 
 /// Uma alternativa de uma ação com opções.
@@ -140,7 +184,15 @@ model WlDia {
   data            DateTime @id @db.Date
   pontosPossiveis Decimal  @map("pontos_possiveis") @db.Decimal(6, 2)
 
+  /// O grupo que valeu neste dia, congelado como o resto da foto.
+  ///
+  /// `null` nos dias registrados antes de os grupos existirem: eles seguem com
+  /// o denominador que já tinham, porque o passado não se mexe sozinho.
+  grupoId Int? @map("grupo_id")
+
   editadoEm DateTime @updatedAt @map("editado_em") @db.Timestamptz
+
+  grupo WlGrupo? @relation(fields: [grupoId], references: [id], onDelete: Restrict)
 
   @@map("wl_dia")
 }

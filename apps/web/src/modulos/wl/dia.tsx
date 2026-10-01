@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { wlApi } from "./api.ts";
 import {
+  acharGrupo,
+  acoesDoGrupo,
   formatarDia,
   formatarPontuacao,
   opcoesAtivas,
@@ -12,6 +14,7 @@ import {
   temOpcoes,
   type Acao,
   type Dia,
+  type Grupo,
   type Registro,
 } from "./calculos.ts";
 
@@ -25,16 +28,20 @@ import {
 export function CartaoDoDia({
   dia,
   acoes,
+  grupos,
   versaoCadastro,
   aoMudar,
   aoAbrirAcoes,
+  aoAbrirGrupos,
 }: {
   dia: string;
   acoes: Acao[];
+  grupos: Grupo[];
   /** Sobe quando o cadastro muda, para o dia ser rebuscado já reprecificado. */
   versaoCadastro: number;
   aoMudar?: () => void;
   aoAbrirAcoes: () => void;
+  aoAbrirGrupos: () => void;
 }) {
   const [estado, setEstado] = useState<Dia | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -57,8 +64,6 @@ export function CartaoDoDia({
     void carregar();
   }, [carregar, versaoCadastro]);
 
-  const ativas = ordenarAcoes(acoes.filter((a) => a.ativa));
-
   async function marcar(acao: Acao, quantidade: number, opcaoId: number | null = null) {
     setEmVoo(acao.id);
     try {
@@ -72,17 +77,62 @@ export function CartaoDoDia({
     }
   }
 
+  async function trocarGrupo(grupoId: number | null) {
+    setEmVoo(-1);
+    try {
+      setEstado(await wlApi.escolherGrupo(dia, grupoId));
+      setErro(null);
+      aoMudar?.();
+    } catch (e) {
+      setErro((e as Error).message);
+    } finally {
+      setEmVoo(null);
+    }
+  }
+
   if (erro && !estado) return <Cartao><p className="text-sm text-perigo">{erro}</p></Cartao>;
   if (!estado) return <Cartao><p className="text-sm text-tinta-3">Carregando…</p></Cartao>;
+
+  // O grupo do dia decide o que aparece: as ações fora dele não valem hoje, e
+  // o denominador também só conta as de dentro.
+  const grupoEfetivo = estado.grupoEfetivoId;
+  const ativas = ordenarAcoes(acoesDoGrupo(acoes, grupoEfetivo).filter((a) => a.ativa));
+  const gruposAtivos = grupos.filter((g) => g.ativo);
+
+  if (gruposAtivos.length === 0) {
+    return (
+      <Cartao>
+        <h2 className="font-medium">Pontuação do dia</h2>
+        <p className="mt-2 text-sm text-tinta-2">
+          Crie um grupo para começar. Cada grupo é um tipo de dia — trabalho, fim de semana, viagem —
+          e decide quais ações contam e quanto vale um dia perfeito.
+        </p>
+        <button
+          type="button"
+          onClick={aoAbrirGrupos}
+          className="mt-3 rounded-xl bg-destaque px-4 py-2 text-sm font-medium text-sobre-destaque"
+        >
+          Criar um grupo
+        </button>
+      </Cartao>
+    );
+  }
 
   if (ativas.length === 0) {
     return (
       <Cartao>
         <h2 className="font-medium">Pontuação do dia</h2>
-        <p className="mt-2 text-sm text-tinta-2">
-          Cadastre o que conta no seu dia para ele começar a ter nota. Ações positivas somam (beber
-          água, treinar) e negativas descontam. Uma ação também pode ter opções — "qual refeição?",
-          "qual treino?" —, e aí você escolhe uma por dia.
+        <SeletorGrupo
+          grupos={gruposAtivos}
+          escolhidoId={grupoEfetivo}
+          gravado={estado.grupoId !== null}
+          ocupado={emVoo === -1}
+          aoEscolher={(id) => void trocarGrupo(id)}
+        />
+        <p className="mt-3 text-sm text-tinta-2">
+          {grupoEfetivo === null
+            ? "Escolha o grupo deste dia para ver as ações."
+            : "Nenhuma ação neste grupo ainda."}
         </p>
         <button
           type="button"
@@ -131,7 +181,15 @@ export function CartaoDoDia({
 
       {erro && <p className="mt-2 text-sm text-perigo">{erro}</p>}
 
-      <ul className="mt-3 divide-y divide-borda">
+      <SeletorGrupo
+        grupos={gruposAtivos}
+        escolhidoId={grupoEfetivo}
+        gravado={estado.grupoId !== null}
+        ocupado={emVoo === -1}
+        aoEscolher={(id) => void trocarGrupo(id)}
+      />
+
+      <ul className="mt-1 divide-y divide-borda">
         {ativas.map((a) => (
           <li key={a.id}>
             <LinhaAcao
@@ -144,10 +202,65 @@ export function CartaoDoDia({
         ))}
       </ul>
 
-      <button type="button" onClick={aoAbrirAcoes} className="mt-3 text-sm text-tinta-2 hover:text-tinta">
-        Gerenciar ações
-      </button>
+      <div className="mt-3 flex gap-4">
+        <button type="button" onClick={aoAbrirAcoes} className="text-sm text-tinta-2 hover:text-tinta">
+          Gerenciar ações
+        </button>
+        <button type="button" onClick={aoAbrirGrupos} className="text-sm text-tinta-2 hover:text-tinta">
+          Grupos
+        </button>
+      </div>
     </Cartao>
+  );
+}
+
+/**
+ * O grupo do dia.
+ *
+ * Enquanto ninguém escolheu, o seletor já mostra o que o dia da semana sugere —
+ * e diz isso em voz baixa, para a pessoa saber que aquilo é um palpite e não
+ * uma escolha dela. Tocar grava.
+ */
+function SeletorGrupo({
+  grupos,
+  escolhidoId,
+  gravado,
+  ocupado,
+  aoEscolher,
+}: {
+  grupos: Grupo[];
+  escolhidoId: number | null;
+  gravado: boolean;
+  ocupado: boolean;
+  aoEscolher: (id: number | null) => void;
+}) {
+  const escolhido = acharGrupo(grupos, escolhidoId);
+
+  return (
+    <div className="mt-3 border-t border-borda pt-3">
+      <label className="block">
+        <span className="block text-sm">Grupo do dia</span>
+        <select
+          value={escolhidoId ?? ""}
+          disabled={ocupado}
+          onChange={(e) => aoEscolher(e.target.value === "" ? null : Number(e.target.value))}
+          className={
+            "mt-1 w-full rounded-xl border bg-fundo px-3 py-2 text-sm outline-none focus:border-destaque disabled:opacity-60 " +
+            (escolhidoId === null ? "border-atencao text-atencao" : "border-borda")
+          }
+        >
+          <option value="">Nenhum</option>
+          {grupos.map((g) => (
+            <option key={g.id} value={g.id}>
+              {g.nome}
+            </option>
+          ))}
+        </select>
+      </label>
+      {escolhido && !gravado && (
+        <p className="mt-1 text-xs text-tinta-3">Sugerido pelo dia da semana — toque para confirmar outro.</p>
+      )}
+    </div>
   );
 }
 

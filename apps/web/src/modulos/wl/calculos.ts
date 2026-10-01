@@ -130,6 +130,19 @@ export type Opcao = {
   ordem: number;
 };
 
+/** Um conjunto de ações para um tipo de dia. */
+export type Grupo = {
+  id: number;
+  nome: string;
+  /** 0 = domingo … 6 = sábado. Vazio é "só manual". */
+  diasDaSemana: number[];
+  ativo: boolean;
+  ordem: number;
+};
+
+/** Os rótulos curtos dos dias da semana, na ordem em que o índice os numera. */
+export const DIAS_DA_SEMANA = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
+
 export type Acao = {
   id: number;
   nome: string;
@@ -142,6 +155,8 @@ export type Acao = {
   ordem: number;
   /** Vazio nas ações comuns; com itens, a ação vira um seletor no dia. */
   opcoes: Opcao[];
+  /** Os ids dos grupos em que a ação aparece. Vazio = não aparece em dia nenhum. */
+  grupos: number[];
 };
 
 export type Registro = {
@@ -156,8 +171,33 @@ export type Registro = {
 export type Dia = {
   data: string;
   pontosPossiveis: number | null;
+  /** O grupo gravado no dia. `null` enquanto ninguém escolheu. */
+  grupoId: number | null;
+  /**
+   * O grupo que vale de fato: o gravado, ou o que o dia da semana sugere.
+   *
+   * Quem resolve é o servidor, e não esta tela — a regra existir em dois
+   * lugares seria a receita para os dois divergirem.
+   */
+  grupoEfetivoId: number | null;
   registros: Registro[];
 };
+
+/**
+ * As ações que valem num grupo.
+ *
+ * Sem grupo, nenhuma: ação fora de grupo não aparece em dia nenhum, que é a
+ * regra que faz o sábado não ser cobrado pelas metas da segunda.
+ */
+export function acoesDoGrupo(acoes: Acao[], grupoId: number | null): Acao[] {
+  if (grupoId === null) return [];
+  return acoes.filter((a) => a.grupos.includes(grupoId));
+}
+
+/** O grupo da lista, pelo id. `null` quando não há ou foi arquivado fora. */
+export function acharGrupo(grupos: Grupo[], id: number | null): Grupo | null {
+  return id === null ? null : (grupos.find((g) => g.id === id) ?? null);
+}
 
 /** `true` quando a ação é um seletor de alternativas em vez de um botão. */
 export function temOpcoes(a: Acao): boolean {

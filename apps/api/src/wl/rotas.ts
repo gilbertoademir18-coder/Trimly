@@ -73,6 +73,42 @@ const CorpoOpcao = z.object({
   ativa: z.boolean().default(true),
 });
 
+const CorpoGrupo = z.object({
+  nome: z.string().trim().min(1, "diga o nome do grupo").max(80, "no máximo 80 caracteres"),
+  /*
+   * 0 = domingo … 6 = sábado. Vazio é "só manual": o grupo do fim de semana na
+   * casa de alguém não tem como ser adivinhado pelo calendário.
+   */
+  diasDaSemana: z
+    .array(z.number().int().min(0, "0 a 6").max(6, "0 a 6"))
+    .max(7, "no máximo sete dias")
+    .default([])
+    .transform((d) => [...new Set(d)].sort((a, b) => a - b)),
+  ativo: z.boolean().default(true),
+  ordem: z.number().int().min(0).max(999).default(0),
+});
+
+const CorpoGrupoDoDia = z.object({
+  /** `null` tira o grupo do dia e o devolve ao que o dia da semana sugere. */
+  grupoId: z.number().int().min(1).nullable(),
+});
+
+type LinhaGrupo = {
+  id: number;
+  nome: string;
+  diasDaSemana: number[];
+  ativo: boolean;
+  ordem: number;
+};
+
+const grupoParaJson = (g: LinhaGrupo) => ({
+  id: g.id,
+  nome: g.nome,
+  diasDaSemana: g.diasDaSemana,
+  ativo: g.ativo,
+  ordem: g.ordem,
+});
+
 /*
  * Uma ação é de um de dois feitios, e o que separa os dois é ter opções:
  *
@@ -96,6 +132,12 @@ const CorpoAcao = z
     ativa: z.boolean().default(true),
     ordem: z.number().int().min(0).max(999).default(0),
     opcoes: z.array(CorpoOpcao).max(50, "no máximo 50 opções").default([]),
+    /*
+     * Os grupos em que a ação aparece. Lista vazia é ação que não aparece em
+     * dia nenhum — permitido, porque é o estado natural de quem acabou de
+     * criar a ação e ainda não a encaixou.
+     */
+    grupos: z.array(z.number().int().min(1)).max(50).default([]),
   })
   .refine((a) => a.repetivel || a.alvoDiario === 1, {
     message: "alvo maior que 1 só faz sentido em ação repetível",
@@ -152,6 +194,7 @@ type LinhaAcao = {
   ativa: boolean;
   ordem: number;
   opcoes?: LinhaOpcao[];
+  grupos?: { grupoId: number }[];
 };
 
 const opcaoParaJson = (o: LinhaOpcao) => ({
@@ -172,12 +215,50 @@ const acaoParaJson = (a: LinhaAcao) => ({
   ativa: a.ativa,
   ordem: a.ordem,
   opcoes: (a.opcoes ?? []).map(opcaoParaJson),
+  grupos: (a.grupos ?? []).map((g) => g.grupoId),
 });
 
 /** As opções sempre vêm na ordem do formulário. */
 const COM_OPCOES = {
   opcoes: { orderBy: [{ ordem: "asc" }, { nome: "asc" }] },
+  grupos: { select: { grupoId: true } },
 } satisfies Prisma.WlAcaoInclude;
+
+/**
+ * Regrava os grupos de uma ação.
+ *
+ * Apaga e recria em vez de conciliar: a ligação não guarda nada além dos dois
+ * ids, então não há o que preservar — e isto é mais curto que comparar listas.
+ */
+async function salvarGruposDaAcao(tx: Prisma.TransactionClient, acaoId: number, grupos: number[]) {
+  await tx.wlAcaoGrupo.deleteMany({ where: { acaoId } });
+  const unicos = [...new Set(grupos)];
+  if (unicos.length > 0) {
+    await tx.wlAcaoGrupo.createMany({ data: unicos.map((grupoId) => ({ acaoId, grupoId })) });
+  }
+}
+
+/**
+ * O grupo que vale num dia: o que já estava gravado, ou o que o dia da semana
+ * sugere.
+ *
+ * O dia da semana sai da própria coluna DATE, que não tem hora nem fuso — ler
+ * `getUTCDay()` aqui é exato, diferente do que seria num TIMESTAMPTZ.
+ *
+ * Empate entre grupos que cobrem o mesmo dia resolve por `ordem` e depois id:
+ * alguém tem que ganhar, e a regra precisa ser estável entre uma chamada e
+ * outra.
+ */
+async function resolverGrupo(tx: Prisma.TransactionClient, data: Date, jaGravado: number | null) {
+  if (jaGravado !== null) return jaGravado;
+
+  const doDia = await tx.wlGrupo.findMany({
+    where: { ativo: true, diasDaSemana: { has: data.getUTCDay() } },
+    orderBy: [{ ordem: "asc" }, { id: "asc" }],
+    take: 1,
+  });
+  return doDia[0]?.id ?? null;
+}
 
 /**
  * Concilia a lista de opções que o formulário mandou com a que está no banco.
@@ -212,6 +293,9 @@ async function salvarOpcoes(
 /**
  * Quanto vale um dia perfeito com o cadastro de agora.
  *
+ * Conta só as ações do grupo do dia: um sábado não é cobrado pelas metas de
+ * uma segunda. Sem grupo não há o que medir, e o total é zero.
+ *
  * As ações sem opções entram pelo alvo diário (8 copos de água a 0,5 somam 4).
  * As com opções entram pela MELHOR opção, e não pela soma: só cabe uma por
  * dia, então somar todas faria um 100% que ninguém consegue alcançar. O
@@ -224,12 +308,19 @@ async function salvarOpcoes(
  * texto. A soma acontece em numeric (exata) e só o resultado vira número, a
  * mesma fronteira do `.toNumber()` do resto.
  */
-async function calcularPossiveis(tx: Prisma.TransactionClient): Promise<number> {
+async function calcularPossiveis(
+  tx: Prisma.TransactionClient,
+  grupoId: number | null,
+): Promise<number> {
+  if (grupoId === null) return 0;
+
   const linhas = await tx.$queryRaw<{ total: number }[]>`
     SELECT (
       COALESCE((
-        SELECT SUM("pontos" * "alvo_diario")
-        FROM "wl_acao" WHERE "ativa" AND "pontos" > 0
+        SELECT SUM(a."pontos" * a."alvo_diario")
+        FROM "wl_acao" a
+        JOIN "wl_acao_grupo" ag ON ag."acao_id" = a."id"
+        WHERE a."ativa" AND a."pontos" > 0 AND ag."grupo_id" = ${grupoId}
       ), 0)
       + COALESCE((
         SELECT SUM(GREATEST(m."melhor", 0))
@@ -237,7 +328,8 @@ async function calcularPossiveis(tx: Prisma.TransactionClient): Promise<number> 
           SELECT MAX(o."pontos") AS "melhor"
           FROM "wl_acao_opcao" o
           JOIN "wl_acao" a ON a."id" = o."acao_id"
-          WHERE a."ativa" AND o."ativa"
+          JOIN "wl_acao_grupo" ag ON ag."acao_id" = a."id"
+          WHERE a."ativa" AND o."ativa" AND ag."grupo_id" = ${grupoId}
           GROUP BY o."acao_id"
         ) m
       ), 0)
@@ -257,10 +349,10 @@ async function calcularPossiveis(tx: Prisma.TransactionClient): Promise<number> 
  * de congelar.
  */
 async function refotografarDia(tx: Prisma.TransactionClient, data: Date) {
-  const registros = await tx.wlRegistro.findMany({
-    where: { data },
-    include: { acao: true, opcao: true },
-  });
+  const [registros, dia] = await Promise.all([
+    tx.wlRegistro.findMany({ where: { data }, include: { acao: true, opcao: true } }),
+    tx.wlDia.findUnique({ where: { data } }),
+  ]);
 
   // Dia sem registro não ganha linha em `wl_dia`: ele fica neutro no
   // calendário, em vez de virar um zero que puxa a média para baixo só porque
@@ -281,12 +373,16 @@ async function refotografarDia(tx: Prisma.TransactionClient, data: Date) {
     }
   }
 
-  const total = await calcularPossiveis(tx);
+  // Dia já gravado mantém o grupo que tinha; dia novo recebe o que o dia da
+  // semana sugere. Reabrir um dia antigo (sem grupo) atribui um — faz parte de
+  // refotografar, que é sempre o cadastro de agora.
+  const grupoId = await resolverGrupo(tx, data, dia?.grupoId ?? null);
+  const total = await calcularPossiveis(tx, grupoId);
 
   await tx.wlDia.upsert({
     where: { data },
-    create: { data, pontosPossiveis: total },
-    update: { pontosPossiveis: total },
+    create: { data, pontosPossiveis: total, grupoId },
+    update: { pontosPossiveis: total, grupoId },
   });
   return total;
 }
@@ -303,9 +399,20 @@ async function lerDia(data: Date) {
     prisma.wlDia.findUnique({ where: { data } }),
     prisma.wlRegistro.findMany({ where: { data }, orderBy: { acaoId: "asc" } }),
   ]);
+
+  /*
+   * `grupoEfetivoId` é o que a tela usa para saber quais ações mostrar: o
+   * gravado, ou o que o dia da semana sugere enquanto ninguém escolheu. A
+   * regra fica aqui, e não no front, para não existir em dois lugares e
+   * divergir.
+   */
+  const grupoEfetivoId = await resolverGrupo(prisma, data, dia?.grupoId ?? null);
+
   return {
     data: dateParaDia(data),
     pontosPossiveis: dia ? dia.pontosPossiveis.toNumber() : null,
+    grupoId: dia?.grupoId ?? null,
+    grupoEfetivoId,
     registros: registros.map((r) => ({
       acaoId: r.acaoId,
       opcaoId: r.opcaoId,
@@ -383,10 +490,11 @@ export async function rotasWl(app: FastifyInstance) {
     const corpo = CorpoAcao.safeParse(req.body);
     if (!corpo.success) return reply.code(400).send({ erro: primeiroErro(corpo.error) });
 
-    const { opcoes, ...dados } = corpo.data;
+    const { opcoes, grupos, ...dados } = corpo.data;
     const acao = await prisma.$transaction(async (tx) => {
       const criada = await tx.wlAcao.create({ data: dados });
       await salvarOpcoes(tx, criada.id, opcoes);
+      await salvarGruposDaAcao(tx, criada.id, grupos);
       return tx.wlAcao.findUniqueOrThrow({ where: { id: criada.id }, include: COM_OPCOES });
     });
     return reply.code(201).send(acaoParaJson(acao));
@@ -403,7 +511,7 @@ export async function rotasWl(app: FastifyInstance) {
     const existe = await prisma.wlAcao.findUnique({ where: { id }, include: { opcoes: true } });
     if (!existe) return reply.code(404).send({ erro: "Ação não encontrada." });
 
-    const { opcoes, ...dados } = corpo.data;
+    const { opcoes, grupos, ...dados } = corpo.data;
 
     // Opção de outra ação no corpo seria um jeito silencioso de roubá-la.
     const alheia = opcoes.find((o) => o.id !== undefined && !existe.opcoes.some((e) => e.id === o.id));
@@ -412,6 +520,7 @@ export async function rotasWl(app: FastifyInstance) {
     const acao = await prisma.$transaction(async (tx) => {
       await tx.wlAcao.update({ where: { id }, data: dados });
       await salvarOpcoes(tx, id, opcoes);
+      await salvarGruposDaAcao(tx, id, grupos);
       return tx.wlAcao.findUniqueOrThrow({ where: { id }, include: COM_OPCOES });
     });
     return acaoParaJson(acao);
@@ -434,6 +543,53 @@ export async function rotasWl(app: FastifyInstance) {
     // deleteMany pelo mesmo motivo das pesagens: apagar o que já não existe é
     // sucesso, não erro.
     await prisma.wlAcao.deleteMany({ where: { id } });
+    return reply.code(204).send();
+  });
+
+  // -------------------------------------------------------------------------
+  // Grupos de ações
+  // -------------------------------------------------------------------------
+
+  app.get("/grupos", async () => {
+    const grupos = await prisma.wlGrupo.findMany({ orderBy: [{ ordem: "asc" }, { nome: "asc" }] });
+    return grupos.map(grupoParaJson);
+  });
+
+  app.post("/grupos", async (req, reply) => {
+    const corpo = CorpoGrupo.safeParse(req.body);
+    if (!corpo.success) return reply.code(400).send({ erro: primeiroErro(corpo.error) });
+
+    const grupo = await prisma.wlGrupo.create({ data: corpo.data });
+    return reply.code(201).send(grupoParaJson(grupo));
+  });
+
+  app.put<{ Params: { id: string } }>("/grupos/:id", async (req, reply) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id < 1) return reply.code(400).send({ erro: "Id inválido." });
+    const corpo = CorpoGrupo.safeParse(req.body);
+    if (!corpo.success) return reply.code(400).send({ erro: primeiroErro(corpo.error) });
+
+    const existe = await prisma.wlGrupo.findUnique({ where: { id } });
+    if (!existe) return reply.code(404).send({ erro: "Grupo não encontrado." });
+
+    const grupo = await prisma.wlGrupo.update({ where: { id }, data: corpo.data });
+    return grupoParaJson(grupo);
+  });
+
+  app.delete<{ Params: { id: string } }>("/grupos/:id", async (req, reply) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id < 1) return reply.code(400).send({ erro: "Id inválido." });
+
+    const usos = await prisma.wlDia.count({ where: { grupoId: id } });
+    if (usos > 0) {
+      return reply.code(409).send({
+        erro: `Este grupo já valeu em ${usos} ${usos === 1 ? "dia" : "dias"}. Arquive em vez de apagar, para o histórico continuar explicável.`,
+      });
+    }
+
+    // As ligações com as ações caem junto (a chave é CASCADE): elas não são
+    // dado em si, só a ligação.
+    await prisma.wlGrupo.deleteMany({ where: { id } });
     return reply.code(204).send();
   });
 
@@ -489,6 +645,45 @@ export async function rotasWl(app: FastifyInstance) {
     await prisma.$transaction(async (tx) => {
       await refotografarDia(tx, dia.data);
     });
+    return lerDia(dia.data);
+  });
+
+  /*
+   * O grupo do dia: escolher, trocar e tirar na mesma requisição. `null` tira,
+   * e o dia volta a seguir o que o dia da semana sugere.
+   */
+  app.put<{ Params: { dia: string } }>("/dias/:dia/grupo", async (req, reply) => {
+    const dia = Dia.safeParse(req.params.dia);
+    if (!dia.success) return reply.code(400).send({ erro: primeiroErro(dia.error) });
+    const corpo = CorpoGrupoDoDia.safeParse(req.body);
+    if (!corpo.success) return reply.code(400).send({ erro: primeiroErro(corpo.error) });
+
+    const { grupoId } = corpo.data;
+    if (grupoId !== null) {
+      const grupo = await prisma.wlGrupo.findUnique({ where: { id: grupoId } });
+      if (!grupo) return reply.code(404).send({ erro: "Grupo não encontrado." });
+      if (!grupo.ativo) {
+        return reply.code(409).send({ erro: "Este grupo está arquivado. Reative-o para voltar a usá-lo." });
+      }
+    }
+
+    await prisma.$transaction(async (tx) => {
+      /*
+       * Trocar o grupo não apaga o que já foi marcado: uma ação que não está no
+       * grupo novo some da tela, mas o registro fica — e volta a aparecer se o
+       * grupo for desfeito. Apagar seria perder trabalho por uma troca que
+       * pode ter sido engano.
+       */
+      const existente = await tx.wlDia.findUnique({ where: { data: dia.data } });
+      if (existente) {
+        await tx.wlDia.update({ where: { data: dia.data }, data: { grupoId } });
+      } else if (grupoId !== null) {
+        const possiveis = await calcularPossiveis(tx, grupoId);
+        await tx.wlDia.create({ data: { data: dia.data, pontosPossiveis: possiveis, grupoId } });
+      }
+      await refotografarDia(tx, dia.data);
+    });
+
     return lerDia(dia.data);
   });
 

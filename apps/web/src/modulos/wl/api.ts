@@ -1,5 +1,5 @@
 import { api } from "../../api.ts";
-import type { Acao, Dia, DiaResumido, Meta, Pesagem } from "./calculos.ts";
+import type { Acao, Dia, DiaResumido, Grupo, Meta, Pesagem } from "./calculos.ts";
 import type { Jejum } from "./jejum-calculos.ts";
 
 /**
@@ -16,6 +16,9 @@ export type AcaoNova = Omit<Acao, "id" | "opcoes"> & {
 /** O que o formulário de jejum manda. Instantes em ISO; o dia, em `AAAA-MM-DD`. */
 export type JejumNovo = Omit<Jejum, "id">;
 
+/** O que o cadastro de grupo envia. */
+export type GrupoNovo = Omit<Grupo, "id">;
+
 export const wlApi = {
   pesagens: () => api<Pesagem[]>("/wl/pesagens"),
   salvarPesagem: (dia: string, pesoKg: number, nota: string | null) =>
@@ -29,6 +32,11 @@ export const wlApi = {
   salvarAcao: (id: number, acao: AcaoNova) => api<Acao>(`/wl/acoes/${id}`, { method: "PUT", corpo: acao }),
   apagarAcao: (id: number) => api<void>(`/wl/acoes/${id}`, { method: "DELETE" }),
 
+  grupos: () => api<Grupo[]>("/wl/grupos"),
+  criarGrupo: (g: GrupoNovo) => api<Grupo>("/wl/grupos", { method: "POST", corpo: g }),
+  salvarGrupo: (id: number, g: GrupoNovo) => api<Grupo>("/wl/grupos/" + id, { method: "PUT", corpo: g }),
+  apagarGrupo: (id: number) => api<void>("/wl/grupos/" + id, { method: "DELETE" }),
+
   dias: (de: string, ate: string) => api<DiaResumido[]>(`/wl/dias?de=${de}&ate=${ate}`),
   dia: (dia: string) => api<Dia>(`/wl/dias/${dia}`),
   /**
@@ -41,6 +49,9 @@ export const wlApi = {
    * Reprecifica um dia com o cadastro de agora: não muda o que foi marcado,
    * só quanto vale. Repetir é inofensivo.
    */
+  /** Escolhe, troca ou tira (null) o grupo do dia. Devolve o dia inteiro. */
+  escolherGrupo: (dia: string, grupoId: number | null) =>
+    api<Dia>("/wl/dias/" + dia + "/grupo", { method: "PUT", corpo: { grupoId } }),
   refotografar: (dia: string) => api<Dia>(`/wl/dias/${dia}/refotografar`, { method: "POST" }),
 
   /** O jejum em andamento, ou `null`. */

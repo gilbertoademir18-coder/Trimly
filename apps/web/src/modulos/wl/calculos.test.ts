@@ -8,6 +8,7 @@ import {
   marcasDoEixo,
   mediaPontuacao,
   mudarMes,
+  acoesDoGrupo,
   opcoesAtivas,
   ordenarAcoes,
   podeSomar,
@@ -32,6 +33,7 @@ const umaAcao = (campos: Partial<Acao> = {}): Acao => ({
   ativa: true,
   ordem: 0,
   opcoes: [],
+  grupos: [],
   ...campos,
 });
 
@@ -248,6 +250,32 @@ describe("pontosPossiveis com ações que têm opções", () => {
     // Escolhe-se uma por dia: repetir não existe aqui.
     const acao = umaAcao({ pontos: null, alvoDiario: 8, opcoes: [umaOpcao(5)] });
     expect(pontosPossiveis([acao])).toBe(5);
+  });
+});
+
+describe("acoesDoGrupo", () => {
+  const trabalho = umaAcao({ id: 1, grupos: [1] });
+  const fimDeSemana = umaAcao({ id: 2, grupos: [2] });
+  const sempre = umaAcao({ id: 3, grupos: [1, 2] });
+  const solta = umaAcao({ id: 4, grupos: [] });
+  const todas = [trabalho, fimDeSemana, sempre, solta];
+
+  it("traz só as do grupo pedido", () => {
+    expect(acoesDoGrupo(todas, 1).map((a) => a.id)).toEqual([1, 3]);
+    expect(acoesDoGrupo(todas, 2).map((a) => a.id)).toEqual([2, 3]);
+  });
+
+  it("ação sem grupo não aparece em grupo nenhum", () => {
+    expect(acoesDoGrupo(todas, 1)).not.toContain(solta);
+    expect(acoesDoGrupo(todas, 2)).not.toContain(solta);
+  });
+
+  it("sem grupo escolhido, nenhuma ação vale", () => {
+    expect(acoesDoGrupo(todas, null)).toEqual([]);
+  });
+
+  it("grupo que não existe não traz nada", () => {
+    expect(acoesDoGrupo(todas, 99)).toEqual([]);
   });
 });
 
