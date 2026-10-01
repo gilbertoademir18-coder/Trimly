@@ -366,6 +366,7 @@ $itemAbrir = $menu.Items.Add("Abrir no Edge")
 $itemAbrir.Font = New-Object System.Drawing.Font($menu.Font, [System.Drawing.FontStyle]::Bold)
 $itemCelular = $menu.Items.Add("Copiar link do celular")
 $itemCode = $menu.Items.Add("Abrir no VS Code")
+$itemPasta = $menu.Items.Add("Abrir a pasta do projeto")
 $itemReiniciar = $menu.Items.Add("Reiniciar o servidor")
 $menu.Items.Add("-") | Out-Null
 $itemBackup = $menu.Items.Add("Fazer backup do banco")
@@ -441,6 +442,11 @@ $itemCode.add_Click({
     }
     $alvo = if (Test-Path $WORKSPACE) { $WORKSPACE } else { $RAIZ }
     Start-Process $code -ArgumentList "`"$alvo`""
+})
+
+# $RAIZ, e não um caminho escrito: é a pasta desta cópia, onde quer que ela esteja.
+$itemPasta.add_Click({
+    Start-Process explorer.exe -ArgumentList "`"$RAIZ`""
 })
 
 $itemReiniciar.add_Click({

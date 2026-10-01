@@ -48,6 +48,7 @@ Trimly) — o README de lá conta os porquês em detalhe.
 | **Abrir no Edge** | Abre o app. Com o servidor parado, sobe ele antes |
 | Copiar link do celular | Copia a URL HTTPS do tailnet |
 | Abrir no VS Code | Abre `Trimly.code-workspace` |
+| Abrir a pasta do projeto | Abre a pasta do código-fonte no Explorer |
 | Reiniciar o servidor | Aplica migrações pendentes, recompila o front e sobe de novo |
 | Fazer backup do banco | Roda `scripts\backup-banco.ps1` numa janela |
 | Iniciar com o Windows | Liga e desliga a subida automática no login |
