@@ -65,6 +65,14 @@ if (!MODO_DEV && existsSync(WEB_DIST)) {
     if (req.url.startsWith("/api/")) {
       return reply.code(404).send({ erro: "Rota não encontrada." });
     }
+    // Arquivo que não existe (`.js`, `.css`, `.png`...) também é 404. Com o
+    // index.html no lugar, um service worker que se atualiza entre um build e
+    // o reinício guardaria esse HTML como o JS do app — e a tela ficaria
+    // branca até alguém limpar o cache na mão. Com 404 a instalação falha e
+    // fica valendo a versão anterior, que funciona.
+    if (/^[^?]*\.[a-z0-9]+(\?|$)/i.test(req.url)) {
+      return reply.code(404).send();
+    }
     return reply.header("Cache-Control", "no-cache").sendFile("index.html");
   });
 } else if (!MODO_DEV) {
