@@ -166,9 +166,10 @@ function Url-Tailnet {
       vermelho o servidor caiu ou não subiu
       nenhum   subindo — estado passageiro, não vale alarme
 
-    O selo vai no canto superior direito, que é onde o desenho do Trimly tem
-    espaço vazio: embaixo ele cobriria o ponto em que a linha termina. O anel
-    branco por baixo o mantém legível sobre bandeja clara ou escura.
+    O selo vai no canto inferior direito, igual ao do NihongoHub: com os dois
+    ícones na mesma bandeja, o estado aparece sempre no mesmo lugar, e não dá
+    para confundir qual app está no ar. O anel branco por baixo o mantém
+    legível sobre bandeja clara ou escura.
 #>
 function Novo-Icone([bool]$apagado, [string]$selo) {
     $origem = [System.Drawing.Image]::FromFile((Join-Path $RAIZ "apps\web\public\icon-192.png"))
@@ -199,9 +200,9 @@ function Novo-Icone([bool]$apagado, [string]$selo) {
                 [System.Drawing.Color]::FromArgb(255, 205, 40, 40)
             }
             $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
-            $g.FillEllipse([System.Drawing.Brushes]::White, 16, 0, 16, 16)
+            $g.FillEllipse([System.Drawing.Brushes]::White, 16, 16, 16, 16)
             $pincel = New-Object System.Drawing.SolidBrush $cor
-            $g.FillEllipse($pincel, 18, 2, 12, 12)
+            $g.FillEllipse($pincel, 18, 18, 12, 12)
             $pincel.Dispose()
         }
 
