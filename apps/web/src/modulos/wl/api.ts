@@ -30,6 +30,11 @@ export const wlApi = {
   /** Marca, corrige e desmarca (quantidade 0) na mesma rota. Devolve o dia inteiro. */
   marcar: (dia: string, acaoId: number, quantidade: number) =>
     api<Dia>(`/wl/dias/${dia}/acoes/${acaoId}`, { method: "PUT", corpo: { quantidade } }),
+  /**
+   * Reprecifica um dia com o cadastro de agora: não muda o que foi marcado,
+   * só quanto vale. Repetir é inofensivo.
+   */
+  refotografar: (dia: string) => api<Dia>(`/wl/dias/${dia}/refotografar`, { method: "POST" }),
   /** Escolhe, troca ou tira (`null`) a refeição do dia. Devolve o dia inteiro. */
   escolherRefeicao: (dia: string, refeicaoId: number | null) =>
     api<Dia>(`/wl/dias/${dia}/refeicao`, { method: "PUT", corpo: { refeicaoId } }),

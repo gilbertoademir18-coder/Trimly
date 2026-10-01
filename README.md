@@ -191,6 +191,14 @@ numerador e denominador voltam juntos ao cadastro de agora, porque congelar só
 um dos dois daria nota acima de 100% (ação nova somando sem entrar no total) ou
 menor do que o dia mereceu.
 
+**Mas hoje não é passado.** Mudar quanto vale um hábito ao meio-dia tem que
+valer para o dia inteiro — senão a nota de hoje ficaria presa no preço de
+quando você marcou a primeira coisa de manhã. Por isso o front chama
+`POST /api/wl/dias/:dia/refotografar` depois de mexer no cadastro, passando o
+dia que o aparelho considera hoje. Quem decide que dia é hoje continua sendo o
+celular de quem está usando, nunca o fuso do servidor. Os dias anteriores
+seguem parados.
+
 **Dia sem registro é neutro, não é zero.** Ele não ganha linha em `wl_dia`,
 aparece apagado no calendário e fica fora das médias. Esquecer de anotar não é
 o mesmo que um dia ruim, e tratar os dois igual puniria justamente quem passou

@@ -70,9 +70,9 @@ export function PainelAcoes({ refeicoes, aoMudar }: { refeicoes: Refeicao[]; aoM
         </div>
         <p className="mt-2 text-xs text-tinta-3">
           É a soma das ações positivas, pelo alvo diário de cada uma, mais a melhor refeição do
-          cardápio — e é esse total que vale 100%. Mexer aqui vale de hoje em diante: os dias já
-          registrados guardam o que as ações valiam na época, e só são recalculados se você reabrir
-          o dia.
+          cardápio — e é esse total que vale 100%. Mexer aqui vale de hoje em diante: a nota de hoje
+          é recalculada na hora, e os dias anteriores guardam o que as ações valiam na época — eles
+          só mudam se você reabrir um deles e mexer.
         </p>
       </section>
 

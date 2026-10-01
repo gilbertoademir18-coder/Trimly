@@ -35,6 +35,8 @@ export function PaginaWl() {
   // Sobe a cada mudança (toque no dia, ou edição num cadastro), para o
   // calendário se redesenhar.
   const [versao, setVersao] = useState(0);
+  // Sobe só quando o cadastro muda: é o que faz o cartão do dia rebuscar.
+  const [versaoCadastro, setVersaoCadastro] = useState(0);
 
   const carregar = useCallback(async () => {
     try {
@@ -51,11 +53,25 @@ export function PaginaWl() {
     void carregar();
   }, [carregar]);
 
-  // O cadastro mudou: a lista de trás e o total possível do dia precisam
-  // acompanhar antes mesmo de a janela fechar.
-  const aoMudarCadastro = useCallback(() => {
-    void carregar();
+  /*
+   * O cadastro mudou: a tela de trás precisa acompanhar antes mesmo de a
+   * janela fechar.
+   *
+   * O dia de hoje é reprecificado no servidor, porque ele ainda está sendo
+   * vivido — mudar quanto vale um hábito ao meio-dia vale para o dia inteiro.
+   * Os dias passados ficam como estão: eles só são reavaliados se você reabrir
+   * um deles e mexer.
+   */
+  const aoMudarCadastro = useCallback(async () => {
+    try {
+      await wlApi.refotografar(diaLocal());
+      setErro(null);
+    } catch (e) {
+      setErro((e as Error).message);
+    }
+    await carregar();
     setVersao((v) => v + 1);
+    setVersaoCadastro((v) => v + 1);
   }, [carregar]);
 
   if (erro && !acoes) return <Aviso texto={erro} />;
@@ -72,6 +88,7 @@ export function PaginaWl() {
         dia={diaAberto}
         acoes={acoes}
         refeicoes={refeicoes}
+        versaoCadastro={versaoCadastro}
         aoMudar={() => setVersao((v) => v + 1)}
         aoAbrirAcoes={() => setJanela("acoes")}
         aoAbrirRefeicoes={() => setJanela("refeicoes")}
@@ -94,11 +111,11 @@ export function PaginaWl() {
       </nav>
 
       <Modal aberto={janela === "acoes"} titulo="Ações" aoFechar={() => setJanela(null)}>
-        <PainelAcoes refeicoes={refeicoes} aoMudar={aoMudarCadastro} />
+        <PainelAcoes refeicoes={refeicoes} aoMudar={() => void aoMudarCadastro()} />
       </Modal>
 
       <Modal aberto={janela === "refeicoes"} titulo="Refeições" aoFechar={() => setJanela(null)}>
-        <PainelRefeicoes acoes={acoes} aoMudar={aoMudarCadastro} />
+        <PainelRefeicoes acoes={acoes} aoMudar={() => void aoMudarCadastro()} />
       </Modal>
     </div>
   );

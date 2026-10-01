@@ -497,6 +497,30 @@ export async function rotasWl(app: FastifyInstance) {
     return lerDia(dia.data);
   });
 
+  /*
+   * Tira a foto do dia de novo, com o cadastro de agora.
+   *
+   * Editar uma ação não mexe nos dias por si só — é o que mantém o passado
+   * parado. Mas o dia de hoje ainda está sendo vivido: mudar quanto vale um
+   * hábito ao meio-dia tem que valer para o dia inteiro, que é o "de hoje em
+   * diante" prometido na tela do cadastro.
+   *
+   * Quem chama é o front, depois de mexer no cadastro, e passando o dia que o
+   * aparelho considera hoje — a mesma regra do resto do WL: quem decide que dia
+   * é hoje é o celular de quem está usando, nunca o fuso do servidor.
+   *
+   * Não muda o que foi marcado, só o quanto vale. Repetir é inofensivo.
+   */
+  app.post<{ Params: { dia: string } }>("/dias/:dia/refotografar", async (req, reply) => {
+    const dia = Dia.safeParse(req.params.dia);
+    if (!dia.success) return reply.code(400).send({ erro: primeiroErro(dia.error) });
+
+    await prisma.$transaction(async (tx) => {
+      await refotografarDia(tx, dia.data);
+    });
+    return lerDia(dia.data);
+  });
+
   app.get<{ Params: { dia: string } }>("/dias/:dia", async (req, reply) => {
     const dia = Dia.safeParse(req.params.dia);
     if (!dia.success) return reply.code(400).send({ erro: primeiroErro(dia.error) });

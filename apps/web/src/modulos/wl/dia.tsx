@@ -23,6 +23,7 @@ export function CartaoDoDia({
   dia,
   acoes,
   refeicoes,
+  versaoCadastro,
   aoMudar,
   aoAbrirAcoes,
   aoAbrirRefeicoes,
@@ -30,6 +31,8 @@ export function CartaoDoDia({
   dia: string;
   acoes: Acao[];
   refeicoes: Refeicao[];
+  /** Sobe quando o cadastro muda, para o dia ser rebuscado já reprecificado. */
+  versaoCadastro: number;
   aoMudar?: () => void;
   aoAbrirAcoes: () => void;
   aoAbrirRefeicoes: () => void;
@@ -48,9 +51,12 @@ export function CartaoDoDia({
     }
   }, [dia]);
 
+  // Rebusca ao trocar de dia e quando o cadastro muda. Marcar uma ação não
+  // entra aqui de propósito: o próprio PUT já devolve o dia pronto, e uma
+  // segunda viagem só criaria corrida com a resposta que acabou de chegar.
   useEffect(() => {
     void carregar();
-  }, [carregar]);
+  }, [carregar, versaoCadastro]);
 
   const ativas = ordenarAcoes(acoes.filter((a) => a.ativa));
   const refeicoesAtivas = refeicoes.filter((r) => r.ativa);
