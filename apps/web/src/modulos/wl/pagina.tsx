@@ -7,19 +7,22 @@ import { Aviso } from "./aviso.tsx";
 import { Calendario } from "./calendario.tsx";
 import { diaLocal, type Acao, type Refeicao } from "./calculos.ts";
 import { CartaoDoDia } from "./dia.tsx";
+import { BlocoJejum, PainelJejum } from "./jejum.tsx";
 import { PainelRefeicoes } from "./refeicoes.tsx";
 
 /** Qual janela está aberta, se alguma. */
-type Janela = "acoes" | "refeicoes" | null;
+type Janela = "acoes" | "refeicoes" | "jejum" | null;
 
 /**
  * A tela do dia a dia do WL: a nota de hoje, o que a forma e o mês inteiro
  * logo abaixo.
  *
- * O peso tem tela própria — é outro ritmo, pesa-se uma vez de manhã. Os dois
- * cadastros (ações e refeições) são modais daqui mesmo: mexer neles é uma
- * pausa no meio de marcar o dia, e sair da página perderia a rolagem do
- * calendário.
+ * O jejum abre a tela: enquanto um corre, o cronômetro é a informação viva.
+ *
+ * O peso tem tela própria — é outro ritmo, pesa-se uma vez de manhã. Os
+ * cadastros (ações, refeições) e o histórico de jejuns são modais daqui mesmo:
+ * mexer neles é uma pausa no meio de marcar o dia, e sair da página perderia a
+ * rolagem do calendário.
  *
  * As duas listas moram aqui porque o cartão do dia precisa das duas, e cada
  * painel precisa da outra para mostrar o dia perfeito completo.
@@ -37,6 +40,8 @@ export function PaginaWl() {
   const [versao, setVersao] = useState(0);
   // Sobe só quando o cadastro muda: é o que faz o cartão do dia rebuscar.
   const [versaoCadastro, setVersaoCadastro] = useState(0);
+  // O mesmo para o jejum: mexer no histórico pode apagar o que estava correndo.
+  const [versaoJejum, setVersaoJejum] = useState(0);
 
   const carregar = useCallback(async () => {
     try {
@@ -81,8 +86,20 @@ export function PaginaWl() {
 
   return (
     <div className="space-y-5">
-      <h1 className="text-2xl font-semibold tracking-tight">WL</h1>
+      {/*
+        Sem título à vista: a navegação do topo já marca em que módulo você
+        está, e repetir "WL" logo abaixo só gastava a primeira tela do celular.
+        O h1 fica para leitor de tela, que não enxerga o destaque do menu e
+        precisa de um cabeçalho para saber onde entrou.
+      */}
+      <h1 className="sr-only">WL</h1>
       {erro && <Aviso texto={erro} />}
+
+      <BlocoJejum
+        versao={versaoJejum}
+        aoMudar={() => setVersaoJejum((v) => v + 1)}
+        aoAbrirHistorico={() => setJanela("jejum")}
+      />
 
       <CartaoDoDia
         dia={diaAberto}
@@ -116,6 +133,10 @@ export function PaginaWl() {
 
       <Modal aberto={janela === "refeicoes"} titulo="Refeições" aoFechar={() => setJanela(null)}>
         <PainelRefeicoes acoes={acoes} aoMudar={() => void aoMudarCadastro()} />
+      </Modal>
+
+      <Modal aberto={janela === "jejum"} titulo="Jejuns" aoFechar={() => setJanela(null)}>
+        <PainelJejum aoMudar={() => setVersaoJejum((v) => v + 1)} />
       </Modal>
     </div>
   );

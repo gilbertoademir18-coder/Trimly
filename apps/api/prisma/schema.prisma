@@ -141,3 +141,34 @@ model WlRefeicao {
 
   @@map("wl_refeicao")
 }
+
+/// Um intervalo de jejum.
+///
+/// Instante, e não dia: começa às 20h07 e termina às 12h15 do dia seguinte.
+/// Por isso TIMESTAMPTZ, e não a coluna DATE das pesagens.
+///
+/// `dia` é o dia de calendário a que o jejum pertence — o do **início** —, e
+/// vem decidido pelo aparelho de quem jejua. Guardá-lo explícito, em vez de
+/// extrair a data de `inicio`, é o que evita o bug de fuso: a conexão roda em
+/// UTC, e um jejum começado às 21h de Brasília cairia no dia seguinte se a
+/// data fosse tirada do timestamp.
+model WlJejum {
+  id     Int       @id @default(autoincrement())
+  dia    DateTime  @db.Date
+  inicio DateTime  @db.Timestamptz
+
+  /// `null` enquanto o jejum corre. Só um pode estar aberto por vez — quem
+  /// garante é um índice único parcial, criado à mão na migração.
+  fim DateTime? @db.Timestamptz
+
+  /// A meta em minutos (16 h = 960). `null` é jejum livre, sem alvo.
+  metaMin Int? @map("meta_min")
+
+  nota String?
+
+  criadoEm  DateTime @default(now()) @map("criado_em") @db.Timestamptz
+  editadoEm DateTime @updatedAt @map("editado_em") @db.Timestamptz
+
+  @@index([dia])
+  @@map("wl_jejum")
+}

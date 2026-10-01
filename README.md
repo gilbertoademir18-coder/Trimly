@@ -1,7 +1,7 @@
 # Trimly
 
 App de acompanhamento de desenvolvimento pessoal, em módulos. O primeiro é o
-**WL**: pesagens, meta, evolução e a pontuação de cada dia.
+**WL**: jejum, pontuação de cada dia, calendário, pesagens e meta.
 
 PWA em React + Vite, API em Node (Fastify + Prisma 7) e PostgreSQL local, num
 monorepo com npm workspaces. Acessível do celular pelo Tailscale.
@@ -96,19 +96,23 @@ apps/
     prisma/schema.prisma  Tabelas, com prefixo por módulo (wl_...)
     src/server.ts         Sobe a API e serve o front compilado
     src/lib/datas.ts      Dia do calendário ⇄ coluna DATE
+    src/lib/validacao.ts  As peças de Zod que todo módulo usa
     src/wl/rotas.ts       /api/wl/*
+    src/wl/jejum.ts       /api/wl/jejum/*
   web/                    React 19 + Vite + Tailwind 4 + vite-plugin-pwa
     src/main.tsx          Rotas: cada módulo é uma rota de primeiro nível
     src/modal.tsx         Janela modal, sobre o <dialog> nativo
     src/modulos/wl/       O módulo WL, em duas telas:
-      pagina.tsx            /wl       nota do dia + calendário
+      pagina.tsx            /wl       jejum + nota do dia + calendário
       peso.tsx              /wl/peso  pesagens, meta, IMC e gráfico
       acoes.tsx             O cadastro de ações, numa modal aberta de /wl
       refeicoes.tsx         O cardápio, noutra modal de /wl
       dia.tsx               O cartão de pontuação: ações e refeição do dia
       calendario.tsx        O mês em quadradinhos
       grafico.tsx           A linha do peso, em SVG puro
+      jejum.tsx             O cronômetro no topo, e o histórico noutra modal
       calculos.ts           As contas, puras e testadas
+      jejum-calculos.ts     Durações e agrupamento por dia, idem
     scripts/gerar-icones.mjs
 scripts/
   tray.ps1                Ícone da bandeja
@@ -209,10 +213,49 @@ e a API responde 409 explicando o porquê: apagar deixaria dias com nota sem
 explicação. Arquivada, a ação some da tela do dia e continua explicando o
 passado — e ainda dá para desmarcá-la num dia antigo, só não marcar de novo.
 
+### Jejum
+
+O jejum é um bloco do WL, no topo da tela: enquanto um corre, o cronômetro é a
+informação viva da página. Chegou a nascer como módulo próprio e foi trazido
+para dentro — acompanhar jejum é acompanhar peso, não outro assunto. O
+histórico e o lançamento à mão ficam numa modal, senão a lista empurraria a
+nota do dia para fora da primeira tela.
+
+**Jejum é instante, não dia.** É a diferença para o resto do app: pesagem é "o
+dia 30", mas jejum é "das 20h07 às 12h15". Por isso `TIMESTAMPTZ`, e não a
+coluna `DATE` das pesagens.
+
+**O dia de um jejum é o dia em que ele começou**, mesmo que atravesse a
+meia-noite — das 20h de segunda ao meio-dia de terça conta inteiro para
+segunda. É como se fala ("comecei meu 16h na segunda") e é o que mantém cada
+jejum numa linha só. Dividir pela meia-noite daria totais fisicamente mais
+exatos, ao custo de o intervalo deixar de ser uma linha.
+
+**O dia vem numa coluna própria, e não extraído de `inicio`.** A conexão roda
+em UTC, então `inicio::date` jogaria um jejum começado às 21h de Brasília para
+o dia seguinte, em silêncio. Quem decide o dia é o aparelho de quem jejua — a
+mesma regra das pesagens.
+
+**Só um jejum em aberto por vez,** garantido por índice único parcial
+(`WHERE fim IS NULL`) e não só pela API: a trava fica no banco, onde um segundo
+aparelho também esbarra nela. Intervalos sobrepostos são recusados com 409,
+porque duas linhas no mesmo horário fariam o total do dia contar a mesma hora
+duas vezes.
+
+**A duração não sai da API.** Enquanto o jejum corre, ela depende de "agora", e
+"agora" é o relógio de quem está olhando. O servidor entrega os instantes; a
+contagem é função pura no front, testada com o `agora` entrando como
+parâmetro.
+
+**Dá para lançar e corrigir à mão.** Quem dorme e esquece de parar não precisa
+apagar o registro inteiro: acerta o horário. O cronômetro é o caminho do dia a
+dia, o formulário é a rede de segurança.
+
 ## Próximos passos
 
 - Média móvel de 7 dias no gráfico (suaviza a oscilação diária)
 - Sequência de dias bons (streak) e média móvel da pontuação
+- Jejum: média de horas por semana, e o jejum mais longo
 - Previsão de quando a meta será atingida, pela tendência recente
 - Medidas corporais (cintura, etc.) no WL
 - Próximos módulos do Trimly

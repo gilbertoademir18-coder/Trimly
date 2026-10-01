@@ -13,6 +13,7 @@ try {
 }
 
 const { rotasWl } = await import("./wl/rotas.ts");
+const { rotasJejum } = await import("./wl/jejum.ts");
 
 // 3200 é a do app de verdade (a que o ícone da bandeja sobe). O `npm run dev`
 // usa a 3201, para dar para mexer no código com o app do dia a dia no ar.
@@ -45,6 +46,7 @@ app.setErrorHandler((erro: Error & { statusCode?: number; code?: string }, req, 
 app.get("/api/saude", async () => ({ app: "Trimly", ok: true }));
 
 await app.register(rotasWl, { prefix: "/api/wl" });
+await app.register(rotasJejum, { prefix: "/api/wl/jejum" });
 
 /*
  * O front pronto (`npm run build`) é servido por este mesmo processo: uma

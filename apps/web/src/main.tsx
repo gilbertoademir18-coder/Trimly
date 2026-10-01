@@ -22,6 +22,8 @@ const roteador = createBrowserRouter([
       // /wl/acoes existiu por um tempo e virou modal. Quem tiver o endereço
       // guardado cai em /wl em vez de numa tela de rota não encontrada.
       { path: "wl/acoes", element: <Navigate to="/wl" replace /> },
+      // /jejum chegou a existir como módulo próprio e virou um bloco do WL.
+      { path: "jejum", element: <Navigate to="/wl" replace /> },
     ],
   },
 ]);
