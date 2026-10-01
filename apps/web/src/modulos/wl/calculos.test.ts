@@ -10,6 +10,7 @@ import {
   mudarMes,
   opcoesAtivas,
   ordenarAcoes,
+  podeSomar,
   pontosPossiveis,
   pontuarDia,
   resumir,
@@ -37,7 +38,6 @@ const umaAcao = (campos: Partial<Acao> = {}): Acao => ({
 const umaOpcao = (pontos: number, ativa = true): Opcao => ({
   id: 1,
   nome: "o",
-  descricao: null,
   pontos,
   ativa,
   ordem: 0,
@@ -193,18 +193,24 @@ describe("ordenarAcoes", () => {
     expect(ordenarAcoes([acao(1, -2), acao(2, -3)]).map((a) => a.id)).toEqual([1, 2]);
   });
 
-  it("ação com opções conta como positiva se alguma opção soma", () => {
-    const comOpcoes = umaAcao({
-      id: 9,
-      pontos: null,
-      opcoes: [umaOpcao(-3), { ...umaOpcao(5), id: 2 }],
-    });
-    expect(ordenarAcoes([acao(1, -2), comOpcoes]).map((a) => a.id)).toEqual([9, 1]);
+  it("as com opções vêm antes das comuns, mesmo as positivas", () => {
+    const comOpcoes = umaAcao({ id: 9, pontos: null, opcoes: [umaOpcao(5)] });
+    expect(ordenarAcoes([acao(1, 20), comOpcoes]).map((a) => a.id)).toEqual([9, 1]);
   });
 
-  it("ação só de opções negativas conta como negativa", () => {
+  it("os quatro grupos saem na ordem certa", () => {
+    const opcoesSoma = umaAcao({ id: 1, pontos: null, opcoes: [umaOpcao(5)] });
+    const opcoesDesconta = umaAcao({ id: 2, pontos: null, opcoes: [umaOpcao(-5)] });
+    const comumSoma = acao(3, 4);
+    const comumDesconta = acao(4, -4);
+    const ordenadas = ordenarAcoes([comumDesconta, comumSoma, opcoesDesconta, opcoesSoma]);
+    expect(ordenadas.map((a) => a.id)).toEqual([1, 2, 3, 4]);
+  });
+
+  it("ação só de opções negativas fica atrás das que somam, dentro do seu grupo", () => {
     const sóRuins = umaAcao({ id: 9, pontos: null, opcoes: [umaOpcao(-3)] });
-    expect(ordenarAcoes([sóRuins, acao(1, 2)]).map((a) => a.id)).toEqual([1, 9]);
+    const boa = umaAcao({ id: 8, pontos: null, opcoes: [umaOpcao(3)] });
+    expect(ordenarAcoes([sóRuins, boa]).map((a) => a.id)).toEqual([8, 9]);
   });
 });
 
@@ -242,6 +248,35 @@ describe("pontosPossiveis com ações que têm opções", () => {
     // Escolhe-se uma por dia: repetir não existe aqui.
     const acao = umaAcao({ pontos: null, alvoDiario: 8, opcoes: [umaOpcao(5)] });
     expect(pontosPossiveis([acao])).toBe(5);
+  });
+});
+
+describe("podeSomar", () => {
+  it("é a ação positiva, e não a negativa", () => {
+    expect(podeSomar(umaAcao({ pontos: 3 }))).toBe(true);
+    expect(podeSomar(umaAcao({ pontos: -3 }))).toBe(false);
+  });
+
+  it("com opções, basta uma alternativa que some", () => {
+    const mista = umaAcao({
+      pontos: null,
+      opcoes: [{ ...umaOpcao(-3), id: 1 }, { ...umaOpcao(5), id: 2 }],
+    });
+    expect(podeSomar(mista)).toBe(true);
+  });
+
+  it("ação só de alternativas ruins não soma", () => {
+    // O seletor de deslizes: "Nenhuma" ali é o que se quer, não uma pendência.
+    const sóRuins = umaAcao({ pontos: null, opcoes: [umaOpcao(-3)] });
+    expect(podeSomar(sóRuins)).toBe(false);
+  });
+
+  it("opção boa arquivada não conta", () => {
+    const acao = umaAcao({
+      pontos: null,
+      opcoes: [{ ...umaOpcao(9, false), id: 1 }, { ...umaOpcao(-2), id: 2 }],
+    });
+    expect(podeSomar(acao)).toBe(false);
   });
 });
 

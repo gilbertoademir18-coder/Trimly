@@ -5,6 +5,7 @@ import {
   formatarPontuacao,
   opcoesAtivas,
   ordenarAcoes,
+  podeSomar,
   pontosPossiveis,
   pontuarDia,
   somarPontos,
@@ -185,6 +186,9 @@ function LinhaAcao({
   // Sem opções os pontos são os da ação; `null` aqui só com cadastro corrompido.
   const pontos = acao.pontos ?? 0;
   const negativa = pontos < 0;
+  // Laranja é "ainda falta". Quem decide é `podeSomar`, a mesma regra que a
+  // ação com opções usa — e que deixa a negativa de fora.
+  const pendente = podeSomar(acao) && quantidade === 0;
   const sinal = negativa ? "−" : "+";
   const total = Math.round(Math.abs(pontos) * quantidade * 100) / 100;
 
@@ -224,6 +228,10 @@ function LinhaAcao({
           onClick={() => aoMarcar(feita ? 0 : 1, null)}
           disabled={ocupado}
           aria-pressed={feita}
+          // Três estados, três cores: cheia para o que foi feito, contornada
+          // laranja para a positiva que falta, e neutra para a negativa ainda
+          // não cometida.
+          //
           // Marcada, a ação negativa fica vermelha: ali o botão conta um
           // deslize, e pintá-lo da mesma cor de "beber água" diria que as duas
           // coisas são a mesma. (Diferente da variação de peso, que o app
@@ -232,7 +240,9 @@ function LinhaAcao({
             "rounded-xl px-3 py-1.5 text-sm font-medium " +
             (feita
               ? (negativa ? "bg-perigo" : "bg-destaque") + " text-sobre-destaque"
-              : "border border-borda text-tinta-2")
+              : pendente
+                ? "border border-atencao text-atencao"
+                : "border border-borda text-tinta-2")
           }
         >
           {feita ? "Feito" : "Marcar"}
@@ -256,7 +266,10 @@ function LinhaComOpcoes({
 }) {
   const opcoes = opcoesAtivas(acao);
   const escolhidaId = registro?.opcaoId ?? null;
-  const escolhida = opcoes.find((o) => o.id === escolhidaId) ?? null;
+  // Em "Nenhuma", o seletor fica laranja pelo mesmo motivo do botão "Marcar":
+  // é uma escolha do dia que ainda não foi feita. A ação só de alternativas
+  // ruins não entra — ali "Nenhuma" é exatamente o que se quer.
+  const pendente = podeSomar(acao) && escolhidaId === null;
 
   return (
     <div className={"py-2.5 " + (ocupado ? "opacity-60" : "")}>
@@ -279,7 +292,10 @@ function LinhaComOpcoes({
           onChange={(e) =>
             e.target.value === "" ? aoMarcar(0, null) : aoMarcar(1, Number(e.target.value))
           }
-          className="mt-1 w-full rounded-xl border border-borda bg-fundo px-3 py-2 text-sm outline-none focus:border-destaque disabled:opacity-60"
+          className={
+            "mt-1 w-full rounded-xl border bg-fundo px-3 py-2 text-sm outline-none focus:border-destaque disabled:opacity-60 " +
+            (pendente ? "border-atencao text-atencao" : "border-borda")
+          }
         >
           <option value="">Nenhuma</option>
           {opcoes.map((o) => (
@@ -290,12 +306,6 @@ function LinhaComOpcoes({
           ))}
         </select>
       </label>
-
-      {escolhida?.descricao && (
-        // `whitespace-pre-line` porque descrição de opção costuma ser escrita
-        // em linhas, e um parágrafo corrido perderia essa estrutura.
-        <p className="mt-1.5 text-xs whitespace-pre-line text-tinta-3">{escolhida.descricao}</p>
-      )}
     </div>
   );
 }

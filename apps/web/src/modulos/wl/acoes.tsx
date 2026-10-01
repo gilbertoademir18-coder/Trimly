@@ -164,7 +164,6 @@ function Linha({
     opcoes: acao.opcoes.map((o) => ({
       id: o.id,
       nome: o.nome,
-      descricao: o.descricao,
       pontos: o.pontos,
       ativa: o.ativa,
     })),
@@ -226,11 +225,10 @@ type OpcaoForm = {
   nome: string;
   pontos: string;
   desconta: boolean;
-  descricao: string;
   ativa: boolean;
 };
 
-const OPCAO_VAZIA: OpcaoForm = { nome: "", pontos: "", desconta: false, descricao: "", ativa: true };
+const OPCAO_VAZIA: OpcaoForm = { nome: "", pontos: "", desconta: false, ativa: true };
 
 /**
  * O formulário separa o sinal do valor: tocar em "Desconta" é mais fácil de
@@ -262,7 +260,6 @@ function FormAcao({
       nome: o.nome,
       pontos: String(Math.abs(o.pontos)),
       desconta: o.pontos < 0,
-      descricao: o.descricao ?? "",
       ativa: o.ativa,
     })),
   );
@@ -309,7 +306,6 @@ function FormAcao({
         convertidas.push({
           ...(o.id === undefined ? {} : { id: o.id }),
           nome: o.nome.trim(),
-          descricao: o.descricao.trim() || null,
           pontos: valor,
           ativa: o.ativa,
         });
@@ -366,90 +362,156 @@ function FormAcao({
     >
       <h3 className="mb-3 font-medium">{acao ? "Editar ação" : "Nova ação"}</h3>
 
-      <label className="block">
-        <span className="sr-only">Nome da ação</span>
-        <input
-          value={nome}
-          onChange={(e) => setNome(e.target.value)}
-          placeholder={usaOpcoes ? "Refeição principal" : "Beber 1 copo de água"}
-          maxLength={80}
-          autoFocus={!!acao}
-          className="w-full rounded-xl border border-borda bg-fundo px-3 py-2.5 outline-none focus:border-destaque"
-        />
-      </label>
+      {/*
+        Duas colunas a partir do tablet, uma só no celular: à esquerda o que a
+        ação é, à direita quanto ela vale. Fixar duas colunas espremeria os
+        campos justamente na tela em que o app mais é usado.
+      */}
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-3">
+          <label className="block">
+            <span className="mb-1 block text-sm text-tinta-2">Nome</span>
+            <input
+              value={nome}
+              onChange={(e) => setNome(e.target.value)}
+              placeholder={usaOpcoes ? "Refeição principal" : "Beber 1 copo de água"}
+              maxLength={80}
+              autoFocus={!!acao}
+              className="w-full rounded-xl border border-borda bg-fundo px-3 py-2.5 outline-none focus:border-destaque"
+            />
+          </label>
 
-      <label className="mt-3 flex items-center gap-2 text-sm">
-        <input
-          type="checkbox"
-          checked={usaOpcoes}
-          onChange={(e) => {
-            setUsaOpcoes(e.target.checked);
-            if (e.target.checked && opcoes.length === 0) setOpcoes([{ ...OPCAO_VAZIA }]);
-          }}
-          className="size-4"
-        />
-        Tem opções (escolho uma por dia)
-      </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={usaOpcoes}
+              onChange={(e) => {
+                setUsaOpcoes(e.target.checked);
+                if (e.target.checked && opcoes.length === 0) setOpcoes([{ ...OPCAO_VAZIA }]);
+              }}
+              className="size-4"
+            />
+            Tem opções (escolho uma por dia)
+          </label>
+        </div>
 
-      {usaOpcoes ? (
-        <div className="mt-2 space-y-2">
-          {opcoes.map((o, i) => (
-            <div key={o.id ?? `nova-${i}`} className="rounded-xl border border-borda p-2">
-              <div className="flex gap-2">
-                <label className="min-w-0 flex-1">
-                  <span className="sr-only">Nome da opção</span>
-                  <input
-                    value={o.nome}
-                    onChange={(e) => mudarOpcao(i, { nome: e.target.value })}
-                    placeholder="Marmita sem carne vermelha"
-                    maxLength={80}
-                    className="w-full rounded-lg border border-borda bg-fundo px-2 py-1.5 text-sm outline-none focus:border-destaque"
-                  />
-                </label>
-                <label className="flex w-20 items-center rounded-lg border border-borda bg-fundo px-2 focus-within:border-destaque">
-                  <span className="sr-only">Pontos da opção</span>
-                  <input
-                    value={o.pontos}
-                    onChange={(e) => mudarOpcao(i, { pontos: e.target.value })}
-                    inputMode="decimal"
-                    placeholder="10"
-                    className="tabular w-full bg-transparent py-1.5 text-sm outline-none"
-                  />
-                </label>
-                <button
-                  type="button"
-                  onClick={() => setOpcoes((atuais) => atuais.filter((_, j) => j !== i))}
-                  aria-label={"Tirar a opção " + (o.nome || i + 1)}
-                  className="px-1 text-tinta-3 hover:text-perigo"
-                >
-                  ×
-                </button>
-              </div>
-
-              <div className="mt-1.5 flex items-center gap-2">
-                <div className="flex rounded-lg bg-fundo p-0.5 text-xs">
-                  {[false, true].map((d) => (
-                    <button
-                      key={String(d)}
-                      type="button"
-                      onClick={() => mudarOpcao(i, { desconta: d })}
-                      className={
-                        "rounded px-2 py-0.5 " +
-                        (o.desconta === d ? "bg-superficie font-medium shadow-sm" : "text-tinta-2")
-                      }
-                    >
-                      {d ? "Desconta" : "Soma"}
-                    </button>
-                  ))}
+        <div className="space-y-3">
+          {usaOpcoes ? (
+            <p className="text-sm text-tinta-3">
+              Os pontos ficam nas opções, logo abaixo. Escolhe-se uma por dia, e o dia perfeito conta
+              a melhor delas — a que vale menos rende crédito parcial.
+            </p>
+          ) : (
+            <>
+              <div>
+                <span className="mb-1 block text-sm text-tinta-2">Pontos</span>
+                <div className="flex gap-2">
+                  <label className="flex flex-1 items-center rounded-xl border border-borda bg-fundo px-3 focus-within:border-destaque">
+                    <span className="sr-only">Pontos</span>
+                    <input
+                      value={pontos}
+                      onChange={(e) => setPontos(e.target.value)}
+                      inputMode="decimal"
+                      placeholder="3"
+                      className="tabular w-full bg-transparent py-2.5 outline-none"
+                    />
+                    <span className="text-sm text-tinta-3">pts</span>
+                  </label>
+                  <div className="flex rounded-xl bg-fundo p-0.5 text-sm">
+                    {[false, true].map((d) => (
+                      <button
+                        key={String(d)}
+                        type="button"
+                        onClick={() => setDesconta(d)}
+                        className={
+                          "rounded-lg px-3 " +
+                          (desconta === d ? "bg-superficie font-medium shadow-sm" : "text-tinta-2")
+                        }
+                      >
+                        {d ? "Desconta" : "Soma"}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <input
-                  value={o.descricao}
-                  onChange={(e) => mudarOpcao(i, { descricao: e.target.value })}
-                  placeholder="Descrição (opcional)"
-                  maxLength={1000}
-                  className="min-w-0 flex-1 rounded-lg border border-borda bg-fundo px-2 py-1 text-xs outline-none focus:border-destaque"
-                />
               </div>
+
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={repetivel}
+                  onChange={(e) => setRepetivel(e.target.checked)}
+                  className="size-4"
+                />
+                Pode acontecer várias vezes no mesmo dia
+              </label>
+
+              {repetivel && (
+                <label className="flex items-center gap-2 text-sm text-tinta-2">
+                  Num dia completo, quantas vezes?
+                  <input
+                    value={alvo}
+                    onChange={(e) => setAlvo(e.target.value)}
+                    inputMode="numeric"
+                    className="tabular w-16 rounded-lg border border-borda bg-fundo px-2 py-1 text-center outline-none focus:border-destaque"
+                  />
+                </label>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+
+      {usaOpcoes && (
+        <div className="mt-4 space-y-2">
+          <span className="block text-sm text-tinta-2">Opções</span>
+          {opcoes.map((o, i) => (
+            <div key={o.id ?? `nova-${i}`} className="flex items-center gap-2 rounded-xl border border-borda p-2">
+              <label className="min-w-0 flex-1">
+                <span className="sr-only">Nome da opção</span>
+                <input
+                  value={o.nome}
+                  onChange={(e) => mudarOpcao(i, { nome: e.target.value })}
+                  placeholder="Marmita sem carne vermelha"
+                  maxLength={80}
+                  className="w-full rounded-lg border border-borda bg-fundo px-2 py-1.5 text-sm outline-none focus:border-destaque"
+                />
+              </label>
+
+              <label className="flex w-20 items-center rounded-lg border border-borda bg-fundo px-2 focus-within:border-destaque">
+                <span className="sr-only">Pontos da opção</span>
+                <input
+                  value={o.pontos}
+                  onChange={(e) => mudarOpcao(i, { pontos: e.target.value })}
+                  inputMode="decimal"
+                  placeholder="10"
+                  className="tabular w-full bg-transparent py-1.5 text-sm outline-none"
+                />
+              </label>
+
+              <div className="flex rounded-lg bg-fundo p-0.5 text-xs">
+                {[false, true].map((d) => (
+                  <button
+                    key={String(d)}
+                    type="button"
+                    onClick={() => mudarOpcao(i, { desconta: d })}
+                    className={
+                      "rounded px-2 py-1 " +
+                      (o.desconta === d ? "bg-superficie font-medium shadow-sm" : "text-tinta-2")
+                    }
+                  >
+                    {d ? "Desconta" : "Soma"}
+                  </button>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setOpcoes((atuais) => atuais.filter((_, j) => j !== i))}
+                aria-label={"Tirar a opção " + (o.nome || i + 1)}
+                className="px-1 text-lg leading-none text-tinta-3 hover:text-perigo"
+              >
+                ×
+              </button>
             </div>
           ))}
 
@@ -461,58 +523,6 @@ function FormAcao({
             Adicionar opção
           </button>
         </div>
-      ) : (
-        <>
-          <div className="mt-2 flex gap-2">
-            <label className="flex flex-1 items-center rounded-xl border border-borda bg-fundo px-3 focus-within:border-destaque">
-              <span className="sr-only">Pontos</span>
-              <input
-                value={pontos}
-                onChange={(e) => setPontos(e.target.value)}
-                inputMode="decimal"
-                placeholder="3"
-                className="tabular w-full bg-transparent py-2.5 outline-none"
-              />
-              <span className="text-sm text-tinta-3">pts</span>
-            </label>
-            <div className="flex rounded-xl bg-fundo p-0.5 text-sm">
-              {[false, true].map((d) => (
-                <button
-                  key={String(d)}
-                  type="button"
-                  onClick={() => setDesconta(d)}
-                  className={
-                    "rounded-lg px-3 " + (desconta === d ? "bg-superficie font-medium shadow-sm" : "text-tinta-2")
-                  }
-                >
-                  {d ? "Desconta" : "Soma"}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <label className="mt-3 flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={repetivel}
-              onChange={(e) => setRepetivel(e.target.checked)}
-              className="size-4"
-            />
-            Pode acontecer várias vezes no mesmo dia
-          </label>
-
-          {repetivel && (
-            <label className="mt-2 flex items-center gap-2 text-sm text-tinta-2">
-              Num dia completo, quantas vezes?
-              <input
-                value={alvo}
-                onChange={(e) => setAlvo(e.target.value)}
-                inputMode="numeric"
-                className="tabular w-16 rounded-lg border border-borda bg-fundo px-2 py-1 text-center outline-none focus:border-destaque"
-              />
-            </label>
-          )}
-        </>
       )}
 
       {erro && <p className="mt-2 text-sm text-perigo">{erro}</p>}

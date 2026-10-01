@@ -10,7 +10,7 @@ import type { Jejum } from "./jejum-calculos.ts";
  * a que sumiu da lista é apagada ou arquivada conforme já tenha sido usada.
  */
 export type AcaoNova = Omit<Acao, "id" | "opcoes"> & {
-  opcoes: { id?: number; nome: string; descricao: string | null; pontos: number; ativa: boolean }[];
+  opcoes: { id?: number; nome: string; pontos: number; ativa: boolean }[];
 };
 
 /** O que o formulário de jejum manda. Instantes em ISO; o dia, em `AAAA-MM-DD`. */

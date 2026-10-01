@@ -124,7 +124,6 @@ function limitar(v: number, min: number, max: number) {
 export type Opcao = {
   id: number;
   nome: string;
-  descricao: string | null;
   /** Positivo soma, negativo desconta. Nunca zero. */
   pontos: number;
   ativa: boolean;
@@ -168,6 +167,18 @@ export function temOpcoes(a: Acao): boolean {
 /** As opções que ainda podem ser escolhidas, na ordem do cadastro. */
 export function opcoesAtivas(a: Acao): Opcao[] {
   return a.opcoes.filter((o) => o.ativa);
+}
+
+/**
+ * `true` quando a ação tem como somar pontos no dia.
+ *
+ * É o que separa "ainda falta" de "ainda não escorreguei". Só o que soma fica
+ * pendente enquanto não é marcado: numa ação negativa, não ter marcado é a boa
+ * notícia, e sinalizá-la mandaria a pessoa ir cometer o deslize. Numa ação com
+ * opções, basta uma alternativa que some.
+ */
+export function podeSomar(a: Acao): boolean {
+  return temOpcoes(a) ? opcoesAtivas(a).some((o) => o.pontos > 0) : (a.pontos ?? 0) > 0;
 }
 
 /** Um dia como o calendário precisa dele: só os dois números. */
@@ -219,18 +230,24 @@ export function pontosPossiveis(acoes: Acao[]): number {
 }
 
 /**
- * As ações na ordem em que a tela do dia as mostra: as que somam primeiro.
+ * As ações na ordem em que a tela do dia as mostra:
  *
- * O dia se marca de cima para baixo, e o que se quer fazer vem antes do que se
- * quer evitar — a lista começa pelo que dá para buscar, e não pelo que dá para
- * errar. Dentro de cada grupo vale a ordem do cadastro: `sort` é estável, e a
- * API já entrega por `ordem` e depois nome.
+ *   1. com opções, que somam      a escolha do dia, e o que mais rende
+ *   2. com opções, que descontam
+ *   3. sem opções, que somam
+ *   4. sem opções, que descontam
+ *
+ * As com opções vêm primeiro porque pedem uma decisão, e não um toque: deixá-las
+ * no fim faria a pessoa rolar a lista toda para responder a pergunta principal
+ * do dia. Depois, o que se quer fazer vem antes do que se quer evitar — a lista
+ * começa pelo que dá para buscar, e não pelo que dá para errar.
+ *
+ * Dentro de cada grupo vale a ordem do cadastro: `sort` é estável, e a API já
+ * entrega por `ordem` e depois nome.
  */
 export function ordenarAcoes(acoes: Acao[]): Acao[] {
-  // Numa ação com opções, "soma" é ter ao menos uma alternativa que soma.
-  const soma = (a: Acao) =>
-    temOpcoes(a) ? opcoesAtivas(a).some((o) => o.pontos > 0) : (a.pontos ?? 0) > 0;
-  return [...acoes].sort((a, b) => Number(soma(b)) - Number(soma(a)));
+  const chave = (a: Acao) => (temOpcoes(a) ? 0 : 2) + (podeSomar(a) ? 0 : 1);
+  return [...acoes].sort((a, b) => chave(a) - chave(b));
 }
 
 /**

@@ -15,11 +15,14 @@ import { useEffect, useRef } from "react";
 export function Modal({
   aberto,
   titulo,
+  largura = "normal",
   aoFechar,
   children,
 }: {
   aberto: boolean;
   titulo: string;
+  /** `larga` para o conteúdo que se divide em colunas; `normal` para listas. */
+  largura?: "normal" | "larga";
   aoFechar: () => void;
   children: React.ReactNode;
 }) {
@@ -59,7 +62,15 @@ export function Modal({
       // que o estado do pai confirma o fechamento em vez de dessincronizar.
       onClose={aoFechar}
       aria-label={titulo}
-      className="m-auto max-h-[85dvh] w-[min(32rem,calc(100vw-1.5rem))] overflow-hidden rounded-2xl border border-borda bg-fundo p-0 text-tinta backdrop:bg-black/40"
+      // A largura é sempre a da tela menos uma folga, até o teto de cada
+      // feitio: no celular as duas dão no mesmo, e é só a partir do tablet que
+      // a larga tem onde crescer.
+      className={
+        "m-auto max-h-[85dvh] overflow-hidden rounded-2xl border border-borda bg-fundo p-0 text-tinta backdrop:bg-black/40 " +
+        (largura === "larga"
+          ? "w-[min(48rem,calc(100vw-1.5rem))]"
+          : "w-[min(32rem,calc(100vw-1.5rem))]")
+      }
     >
       <div className="flex items-center justify-between gap-3 border-b border-borda bg-superficie px-4 py-3">
         <h2 className="font-semibold">{titulo}</h2>

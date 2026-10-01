@@ -81,11 +81,10 @@ model WlAcao {
 /// 100% inatingível, já que só cabe uma. Escolher uma que vale menos rende
 /// crédito parcial.
 model WlAcaoOpcao {
-  id        Int     @id @default(autoincrement())
-  acaoId    Int     @map("acao_id")
-  nome      String
-  descricao String?
-  pontos    Decimal @db.Decimal(5, 2)
+  id     Int     @id @default(autoincrement())
+  acaoId Int     @map("acao_id")
+  nome   String
+  pontos Decimal @db.Decimal(5, 2)
 
   /// Arquivar em vez de apagar, como nas ações: opção já escolhida em algum dia
   /// não pode sumir sem deixar a nota daquele dia sem explicação.

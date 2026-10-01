@@ -116,7 +116,7 @@ export function PaginaWl() {
         />
       </nav>
 
-      <Modal aberto={janela === "acoes"} titulo="Ações" aoFechar={() => setJanela(null)}>
+      <Modal aberto={janela === "acoes"} titulo="Ações" largura="larga" aoFechar={() => setJanela(null)}>
         <PainelAcoes aoMudar={() => void aoMudarCadastro()} />
       </Modal>
 

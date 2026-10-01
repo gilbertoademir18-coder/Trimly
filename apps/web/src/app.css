@@ -18,6 +18,10 @@
   --destaque-suave: #ccfbf1;
   --sobre-destaque: #ffffff;
   --perigo: #b42318;
+  /* O laranja de "ainda não feito". Separado do --perigo de propósito: pendente
+     não é erro, é só o que falta. Contraste conferido sobre a superfície dos
+     dois temas (5,18:1 no claro, 7,57:1 no escuro). */
+  --atencao: #c2410c;
   /* A linha dos gráficos. Não é o --destaque: aquele é cor de botão, e este
      passou pelo validador de paleta contra a superfície de cada tema. */
   --serie: #0d9488;
@@ -37,6 +41,7 @@
     --destaque-suave: #123c37;
     --sobre-destaque: #06201d;
     --perigo: #f97066;
+    --atencao: #fb923c;
     --serie: #10a596;
   }
 }
@@ -53,6 +58,7 @@
   --color-destaque-suave: var(--destaque-suave);
   --color-sobre-destaque: var(--sobre-destaque);
   --color-perigo: var(--perigo);
+  --color-atencao: var(--atencao);
   --color-serie: var(--serie);
   --font-sans: "Inter", ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
 }

@@ -69,12 +69,6 @@ const Pontos = z
 const CorpoOpcao = z.object({
   id: z.number().int().min(1).optional(),
   nome: z.string().trim().min(1, "diga o nome da opção").max(80, "no máximo 80 caracteres"),
-  descricao: z
-    .string()
-    .trim()
-    .max(1000, "no máximo 1000 caracteres")
-    .nullish()
-    .transform((d) => d || null),
   pontos: Pontos,
   ativa: z.boolean().default(true),
 });
@@ -144,7 +138,6 @@ const Intervalo = z
 type LinhaOpcao = {
   id: number;
   nome: string;
-  descricao: string | null;
   pontos: { toNumber(): number };
   ativa: boolean;
   ordem: number;
@@ -164,7 +157,6 @@ type LinhaAcao = {
 const opcaoParaJson = (o: LinhaOpcao) => ({
   id: o.id,
   nome: o.nome,
-  descricao: o.descricao,
   pontos: o.pontos.toNumber(),
   ativa: o.ativa,
   ordem: o.ordem,
@@ -197,7 +189,7 @@ const COM_OPCOES = {
 async function salvarOpcoes(
   tx: Prisma.TransactionClient,
   acaoId: number,
-  opcoes: { id?: number; nome: string; descricao: string | null; pontos: number; ativa: boolean }[],
+  opcoes: { id?: number; nome: string; pontos: number; ativa: boolean }[],
 ) {
   const existentes = await tx.wlAcaoOpcao.findMany({ where: { acaoId } });
   const mandadas = new Set(opcoes.map((o) => o.id).filter((id): id is number => id !== undefined));
@@ -211,7 +203,7 @@ async function salvarOpcoes(
 
   // A ordem sai da posição no formulário: arrastar lá é reordenar aqui.
   for (const [i, o] of opcoes.entries()) {
-    const dados = { nome: o.nome, descricao: o.descricao, pontos: o.pontos, ativa: o.ativa, ordem: i };
+    const dados = { nome: o.nome, pontos: o.pontos, ativa: o.ativa, ordem: i };
     if (o.id === undefined) await tx.wlAcaoOpcao.create({ data: { acaoId, ...dados } });
     else await tx.wlAcaoOpcao.update({ where: { id: o.id }, data: dados });
   }
