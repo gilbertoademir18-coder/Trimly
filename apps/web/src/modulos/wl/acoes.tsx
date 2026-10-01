@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { wlApi, type AcaoNova } from "./api.ts";
 import { Aviso } from "./aviso.tsx";
-import { pontosPossiveis, type Acao, type Refeicao } from "./calculos.ts";
+import { opcoesAtivas, pontosPossiveis, temOpcoes, type Acao } from "./calculos.ts";
 
 /**
  * O cadastro de ações do WL, para viver dentro de uma modal.
@@ -12,11 +12,8 @@ import { pontosPossiveis, type Acao, type Refeicao } from "./calculos.ts";
  *
  * O `aoMudar` avisa quem abriu que o catálogo mexeu, para a tela de trás
  * recarregar as ações e o total possível do dia.
- *
- * Recebe as `refeicoes` só para o total do dia perfeito sair completo — quem
- * manda nelas é o painel de refeições.
  */
-export function PainelAcoes({ refeicoes, aoMudar }: { refeicoes: Refeicao[]; aoMudar?: () => void }) {
+export function PainelAcoes({ aoMudar }: { aoMudar?: () => void }) {
   const [acoes, setAcoes] = useState<Acao[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   // `null` é o formulário em branco, que fica sempre à vista. Editar uma ação
@@ -54,10 +51,11 @@ export function PainelAcoes({ refeicoes, aoMudar }: { refeicoes: Refeicao[]; aoM
   if (!acoes) return <p className="text-tinta-3">Carregando…</p>;
 
   const ativas = acoes.filter((a) => a.ativa);
-  const positivas = ativas.filter((a) => a.pontos > 0);
-  const negativas = ativas.filter((a) => a.pontos < 0);
+  const comOpcoes = ativas.filter(temOpcoes);
+  const positivas = ativas.filter((a) => !temOpcoes(a) && (a.pontos ?? 0) > 0);
+  const negativas = ativas.filter((a) => !temOpcoes(a) && (a.pontos ?? 0) < 0);
   const arquivadas = acoes.filter((a) => !a.ativa);
-  const perfeito = pontosPossiveis(acoes, refeicoes);
+  const perfeito = pontosPossiveis(acoes);
 
   return (
     <div className="space-y-4">
@@ -69,10 +67,10 @@ export function PainelAcoes({ refeicoes, aoMudar }: { refeicoes: Refeicao[]; aoM
           <span className="tabular text-2xl font-semibold tracking-tight">{perfeito} pts</span>
         </div>
         <p className="mt-2 text-xs text-tinta-3">
-          É a soma das ações positivas, pelo alvo diário de cada uma, mais a melhor refeição do
-          cardápio — e é esse total que vale 100%. Mexer aqui vale de hoje em diante: a nota de hoje
-          é recalculada na hora, e os dias anteriores guardam o que as ações valiam na época — eles
-          só mudam se você reabrir um deles e mexer.
+          É a soma das ações positivas, pelo alvo diário de cada uma, mais a melhor opção de cada ação
+          que tem opções — e é esse total que vale 100%. Mexer aqui vale de hoje em diante: a nota de
+          hoje é recalculada na hora, e os dias anteriores guardam o que as ações valiam na época —
+          eles só mudam se você reabrir um deles e mexer.
         </p>
       </section>
 
@@ -92,6 +90,10 @@ export function PainelAcoes({ refeicoes, aoMudar }: { refeicoes: Refeicao[]; aoM
         // repouso da janela, e não algo que foi aberto.
         aoCancelar={editando ? () => setEditando(null) : undefined}
       />
+
+      <Grupo titulo="Com opções" vazio="" acoes={comOpcoes}>
+        {(a) => <Linha acao={a} aoEditar={setEditando} aoMexer={mexer} />}
+      </Grupo>
 
       <Grupo titulo="Positivas" vazio="Nenhuma ainda. São elas que formam o dia perfeito." acoes={positivas}>
         {(a) => <Linha acao={a} aoEditar={setEditando} aoMexer={mexer} />}
@@ -121,9 +123,13 @@ function Grupo({
   acoes: Acao[];
   children: (a: Acao) => React.ReactNode;
 }) {
+  // Grupo sem itens e sem texto de vazio não vira seção: é o caso de "Com
+  // opções" e "Arquivadas", que só aparecem quando têm o que mostrar.
+  if (acoes.length === 0 && vazio === "") return null;
+
   return (
     <section className="rounded-2xl border border-borda bg-superficie">
-      <h2 className="px-4 pt-4 pb-2 font-medium">{titulo}</h2>
+      <h3 className="px-4 pt-4 pb-2 font-medium">{titulo}</h3>
       {acoes.length === 0 ? (
         <p className="px-4 pb-4 text-sm text-tinta-3">{vazio}</p>
       ) : (
@@ -146,7 +152,8 @@ function Linha({
   aoEditar: (a: Acao) => void;
   aoMexer: (f: () => Promise<unknown>) => Promise<void>;
 }) {
-  // Arquivar e reativar são a mesma edição com `ativa` trocada.
+  // Arquivar e reativar são a mesma edição com `ativa` trocada. As opções vão
+  // junto como estão: sem elas no corpo, o servidor as apagaria.
   const comAtivaTrocada: AcaoNova = {
     nome: acao.nome,
     pontos: acao.pontos,
@@ -154,50 +161,85 @@ function Linha({
     alvoDiario: acao.alvoDiario,
     ativa: !acao.ativa,
     ordem: acao.ordem,
+    opcoes: acao.opcoes.map((o) => ({
+      id: o.id,
+      nome: o.nome,
+      descricao: o.descricao,
+      pontos: o.pontos,
+      ativa: o.ativa,
+    })),
   };
 
-  const sinal = acao.pontos > 0 ? "+" : "−";
-  const vezes = acao.repetivel ? " · até " + acao.alvoDiario + "× por dia" : "";
+  const resumo = temOpcoes(acao)
+    ? `${opcoesAtivas(acao).length} ${opcoesAtivas(acao).length === 1 ? "opção" : "opções"}`
+    : `${(acao.pontos ?? 0) > 0 ? "+" : "−"}${Math.abs(acao.pontos ?? 0)} pts` +
+      (acao.repetivel ? ` · até ${acao.alvoDiario}× por dia` : "");
 
   return (
-    <div className={"flex items-center gap-3 px-4 py-2.5 " + (acao.ativa ? "" : "opacity-60")}>
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-medium">{acao.nome}</div>
-        <div className="tabular text-xs text-tinta-3">
-          {sinal}
-          {Math.abs(acao.pontos)} pts{vezes}
+    <div className={"px-4 py-2.5 " + (acao.ativa ? "" : "opacity-60")}>
+      <div className="flex items-center gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-medium">{acao.nome}</div>
+          <div className="tabular text-xs text-tinta-3">{resumo}</div>
         </div>
+        <button type="button" onClick={() => aoEditar(acao)} className="text-sm text-tinta-2 hover:text-tinta">
+          Editar
+        </button>
+        <button
+          type="button"
+          onClick={() => void aoMexer(() => wlApi.salvarAcao(acao.id, comAtivaTrocada))}
+          className="text-sm text-tinta-2 hover:text-tinta"
+        >
+          {acao.ativa ? "Arquivar" : "Reativar"}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            // Com histórico o servidor recusa e explica que o caminho é arquivar.
+            if (confirm("Apagar “" + acao.nome + "” de vez?")) {
+              void aoMexer(() => wlApi.apagarAcao(acao.id));
+            }
+          }}
+          className="text-sm text-tinta-3 hover:text-perigo"
+        >
+          Apagar
+        </button>
       </div>
-      <button type="button" onClick={() => aoEditar(acao)} className="text-sm text-tinta-2 hover:text-tinta">
-        Editar
-      </button>
-      <button
-        type="button"
-        onClick={() => void aoMexer(() => wlApi.salvarAcao(acao.id, comAtivaTrocada))}
-        className="text-sm text-tinta-2 hover:text-tinta"
-      >
-        {acao.ativa ? "Arquivar" : "Reativar"}
-      </button>
-      <button
-        type="button"
-        onClick={() => {
-          // Com histórico o servidor recusa e explica que o caminho é arquivar.
-          if (confirm("Apagar “" + acao.nome + "” de vez?")) {
-            void aoMexer(() => wlApi.apagarAcao(acao.id));
-          }
-        }}
-        className="text-sm text-tinta-3 hover:text-perigo"
-      >
-        Apagar
-      </button>
+
+      {temOpcoes(acao) && (
+        <ul className="tabular mt-1 text-xs text-tinta-3">
+          {acao.opcoes.map((o) => (
+            <li key={o.id} className={o.ativa ? "" : "line-through"}>
+              {o.pontos > 0 ? "+" : "−"}
+              {Math.abs(o.pontos)} · {o.nome}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
+
+/** O que o formulário guarda de cada opção enquanto se digita. */
+type OpcaoForm = {
+  id?: number;
+  nome: string;
+  pontos: string;
+  desconta: boolean;
+  descricao: string;
+  ativa: boolean;
+};
+
+const OPCAO_VAZIA: OpcaoForm = { nome: "", pontos: "", desconta: false, descricao: "", ativa: true };
 
 /**
  * O formulário separa o sinal do valor: tocar em "Desconta" é mais fácil de
  * acertar no celular do que digitar um menos antes do número — e impossível de
  * errar sem perceber.
+ *
+ * Uma ação é de um de dois feitios, e o botão "Tem opções" é o que alterna: ou
+ * ela tem pontos próprios (e pode ser repetível), ou os pontos moram nas
+ * opções e escolhe-se uma por dia.
  */
 function FormAcao({
   acao,
@@ -210,11 +252,33 @@ function FormAcao({
 }) {
   const [nome, setNome] = useState(acao?.nome ?? "");
   const [desconta, setDesconta] = useState((acao?.pontos ?? 1) < 0);
-  const [pontos, setPontos] = useState(acao ? String(Math.abs(acao.pontos)) : "");
+  const [pontos, setPontos] = useState(acao?.pontos === null ? "" : String(Math.abs(acao?.pontos ?? 0) || ""));
   const [repetivel, setRepetivel] = useState(acao?.repetivel ?? false);
   const [alvo, setAlvo] = useState(String(acao?.alvoDiario ?? 1));
+  const [usaOpcoes, setUsaOpcoes] = useState(acao ? temOpcoes(acao) : false);
+  const [opcoes, setOpcoes] = useState<OpcaoForm[]>(() =>
+    (acao?.opcoes ?? []).map((o) => ({
+      id: o.id,
+      nome: o.nome,
+      pontos: String(Math.abs(o.pontos)),
+      desconta: o.pontos < 0,
+      descricao: o.descricao ?? "",
+      ativa: o.ativa,
+    })),
+  );
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+
+  function mudarOpcao(i: number, campos: Partial<OpcaoForm>) {
+    setOpcoes((atuais) => atuais.map((o, j) => (j === i ? { ...o, ...campos } : o)));
+  }
+
+  /** Vírgula como separador decimal, igual ao campo de peso. */
+  function lerPontos(texto: string, negativo: boolean): number | null {
+    const valor = Number(texto.trim().replace(",", "."));
+    if (!Number.isFinite(valor) || valor <= 0) return null;
+    return negativo ? -valor : valor;
+  }
 
   async function enviar(e: React.FormEvent) {
     e.preventDefault();
@@ -222,28 +286,68 @@ function FormAcao({
       setErro("Diga o nome da ação.");
       return;
     }
-    // Vírgula como separador decimal, igual ao campo de peso.
-    const valor = Number(pontos.trim().replace(",", "."));
-    if (!Number.isFinite(valor) || valor <= 0) {
-      setErro("Quantos pontos a ação vale? Use um número como 3 ou 2,5.");
-      return;
-    }
-    const alvoDiario = repetivel ? Number(alvo) : 1;
-    if (!Number.isInteger(alvoDiario) || alvoDiario < 1) {
-      setErro("O alvo diário é um número inteiro de vezes, a partir de 1.");
-      return;
+
+    let corpo: AcaoNova;
+
+    if (usaOpcoes) {
+      const preenchidas = opcoes.filter((o) => o.nome.trim() || o.pontos.trim());
+      if (preenchidas.length === 0) {
+        setErro("Adicione ao menos uma opção, ou desligue “Tem opções”.");
+        return;
+      }
+      const convertidas = [];
+      for (const o of preenchidas) {
+        if (!o.nome.trim()) {
+          setErro("Toda opção precisa de um nome.");
+          return;
+        }
+        const valor = lerPontos(o.pontos, o.desconta);
+        if (valor === null) {
+          setErro(`Quantos pontos vale “${o.nome.trim()}”? Use um número como 3 ou 2,5.`);
+          return;
+        }
+        convertidas.push({
+          ...(o.id === undefined ? {} : { id: o.id }),
+          nome: o.nome.trim(),
+          descricao: o.descricao.trim() || null,
+          pontos: valor,
+          ativa: o.ativa,
+        });
+      }
+      corpo = {
+        nome: nome.trim(),
+        pontos: null,
+        repetivel: false,
+        alvoDiario: 1,
+        ativa: acao?.ativa ?? true,
+        ordem: acao?.ordem ?? 0,
+        opcoes: convertidas,
+      };
+    } else {
+      const valor = lerPontos(pontos, desconta);
+      if (valor === null) {
+        setErro("Quantos pontos a ação vale? Use um número como 3 ou 2,5.");
+        return;
+      }
+      const alvoDiario = repetivel ? Number(alvo) : 1;
+      if (!Number.isInteger(alvoDiario) || alvoDiario < 1) {
+        setErro("O alvo diário é um número inteiro de vezes, a partir de 1.");
+        return;
+      }
+      corpo = {
+        nome: nome.trim(),
+        pontos: valor,
+        repetivel,
+        alvoDiario,
+        ativa: acao?.ativa ?? true,
+        ordem: acao?.ordem ?? 0,
+        // Lista vazia é o pedido para o servidor largar as opções que havia.
+        opcoes: [],
+      };
     }
 
     setSalvando(true);
     setErro(null);
-    const corpo: AcaoNova = {
-      nome: nome.trim(),
-      pontos: desconta ? -valor : valor,
-      repetivel,
-      alvoDiario,
-      ativa: acao?.ativa ?? true,
-      ordem: acao?.ordem ?? 0,
-    };
     try {
       if (acao) await wlApi.salvarAcao(acao.id, corpo);
       else await wlApi.criarAcao(corpo);
@@ -258,72 +362,157 @@ function FormAcao({
   return (
     <form
       onSubmit={enviar}
-      className={
-        "rounded-2xl border bg-superficie p-4 " + (acao ? "border-destaque" : "border-borda")
-      }
+      className={"rounded-2xl border bg-superficie p-4 " + (acao ? "border-destaque" : "border-borda")}
     >
-      <h2 className="mb-3 font-medium">{acao ? "Editar ação" : "Nova ação"}</h2>
+      <h3 className="mb-3 font-medium">{acao ? "Editar ação" : "Nova ação"}</h3>
 
       <label className="block">
         <span className="sr-only">Nome da ação</span>
         <input
           value={nome}
           onChange={(e) => setNome(e.target.value)}
-          placeholder="Beber 1 copo de água"
+          placeholder={usaOpcoes ? "Refeição principal" : "Beber 1 copo de água"}
           maxLength={80}
           autoFocus={!!acao}
           className="w-full rounded-xl border border-borda bg-fundo px-3 py-2.5 outline-none focus:border-destaque"
         />
       </label>
 
-      <div className="mt-2 flex gap-2">
-        <label className="flex flex-1 items-center rounded-xl border border-borda bg-fundo px-3 focus-within:border-destaque">
-          <span className="sr-only">Pontos</span>
-          <input
-            value={pontos}
-            onChange={(e) => setPontos(e.target.value)}
-            inputMode="decimal"
-            placeholder="3"
-            className="tabular w-full bg-transparent py-2.5 outline-none"
-          />
-          <span className="text-sm text-tinta-3">pts</span>
-        </label>
-        <div className="flex rounded-xl bg-fundo p-0.5 text-sm">
-          {[false, true].map((d) => (
-            <button
-              key={String(d)}
-              type="button"
-              onClick={() => setDesconta(d)}
-              className={
-                "rounded-lg px-3 " + (desconta === d ? "bg-superficie font-medium shadow-sm" : "text-tinta-2")
-              }
-            >
-              {d ? "Desconta" : "Soma"}
-            </button>
-          ))}
-        </div>
-      </div>
-
       <label className="mt-3 flex items-center gap-2 text-sm">
         <input
           type="checkbox"
-          checked={repetivel}
-          onChange={(e) => setRepetivel(e.target.checked)}
+          checked={usaOpcoes}
+          onChange={(e) => {
+            setUsaOpcoes(e.target.checked);
+            if (e.target.checked && opcoes.length === 0) setOpcoes([{ ...OPCAO_VAZIA }]);
+          }}
           className="size-4"
         />
-        Pode acontecer várias vezes no mesmo dia
+        Tem opções (escolho uma por dia)
       </label>
 
-      {repetivel && (
-        <label className="mt-2 flex items-center gap-2 text-sm text-tinta-2">
-          Num dia completo, quantas vezes?
-          <input
-            value={alvo}
-            onChange={(e) => setAlvo(e.target.value)}
-            inputMode="numeric"
-            className="tabular w-16 rounded-lg border border-borda bg-fundo px-2 py-1 text-center outline-none focus:border-destaque"
-          />
-        </label>
+      {usaOpcoes ? (
+        <div className="mt-2 space-y-2">
+          {opcoes.map((o, i) => (
+            <div key={o.id ?? `nova-${i}`} className="rounded-xl border border-borda p-2">
+              <div className="flex gap-2">
+                <label className="min-w-0 flex-1">
+                  <span className="sr-only">Nome da opção</span>
+                  <input
+                    value={o.nome}
+                    onChange={(e) => mudarOpcao(i, { nome: e.target.value })}
+                    placeholder="Marmita sem carne vermelha"
+                    maxLength={80}
+                    className="w-full rounded-lg border border-borda bg-fundo px-2 py-1.5 text-sm outline-none focus:border-destaque"
+                  />
+                </label>
+                <label className="flex w-20 items-center rounded-lg border border-borda bg-fundo px-2 focus-within:border-destaque">
+                  <span className="sr-only">Pontos da opção</span>
+                  <input
+                    value={o.pontos}
+                    onChange={(e) => mudarOpcao(i, { pontos: e.target.value })}
+                    inputMode="decimal"
+                    placeholder="10"
+                    className="tabular w-full bg-transparent py-1.5 text-sm outline-none"
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setOpcoes((atuais) => atuais.filter((_, j) => j !== i))}
+                  aria-label={"Tirar a opção " + (o.nome || i + 1)}
+                  className="px-1 text-tinta-3 hover:text-perigo"
+                >
+                  ×
+                </button>
+              </div>
+
+              <div className="mt-1.5 flex items-center gap-2">
+                <div className="flex rounded-lg bg-fundo p-0.5 text-xs">
+                  {[false, true].map((d) => (
+                    <button
+                      key={String(d)}
+                      type="button"
+                      onClick={() => mudarOpcao(i, { desconta: d })}
+                      className={
+                        "rounded px-2 py-0.5 " +
+                        (o.desconta === d ? "bg-superficie font-medium shadow-sm" : "text-tinta-2")
+                      }
+                    >
+                      {d ? "Desconta" : "Soma"}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  value={o.descricao}
+                  onChange={(e) => mudarOpcao(i, { descricao: e.target.value })}
+                  placeholder="Descrição (opcional)"
+                  maxLength={1000}
+                  className="min-w-0 flex-1 rounded-lg border border-borda bg-fundo px-2 py-1 text-xs outline-none focus:border-destaque"
+                />
+              </div>
+            </div>
+          ))}
+
+          <button
+            type="button"
+            onClick={() => setOpcoes((atuais) => [...atuais, { ...OPCAO_VAZIA }])}
+            className="w-full rounded-xl border border-dashed border-borda py-2 text-sm text-tinta-2"
+          >
+            Adicionar opção
+          </button>
+        </div>
+      ) : (
+        <>
+          <div className="mt-2 flex gap-2">
+            <label className="flex flex-1 items-center rounded-xl border border-borda bg-fundo px-3 focus-within:border-destaque">
+              <span className="sr-only">Pontos</span>
+              <input
+                value={pontos}
+                onChange={(e) => setPontos(e.target.value)}
+                inputMode="decimal"
+                placeholder="3"
+                className="tabular w-full bg-transparent py-2.5 outline-none"
+              />
+              <span className="text-sm text-tinta-3">pts</span>
+            </label>
+            <div className="flex rounded-xl bg-fundo p-0.5 text-sm">
+              {[false, true].map((d) => (
+                <button
+                  key={String(d)}
+                  type="button"
+                  onClick={() => setDesconta(d)}
+                  className={
+                    "rounded-lg px-3 " + (desconta === d ? "bg-superficie font-medium shadow-sm" : "text-tinta-2")
+                  }
+                >
+                  {d ? "Desconta" : "Soma"}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <label className="mt-3 flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={repetivel}
+              onChange={(e) => setRepetivel(e.target.checked)}
+              className="size-4"
+            />
+            Pode acontecer várias vezes no mesmo dia
+          </label>
+
+          {repetivel && (
+            <label className="mt-2 flex items-center gap-2 text-sm text-tinta-2">
+              Num dia completo, quantas vezes?
+              <input
+                value={alvo}
+                onChange={(e) => setAlvo(e.target.value)}
+                inputMode="numeric"
+                className="tabular w-16 rounded-lg border border-borda bg-fundo px-2 py-1 text-center outline-none focus:border-destaque"
+              />
+            </label>
+          )}
+        </>
       )}
 
       {erro && <p className="mt-2 text-sm text-perigo">{erro}</p>}

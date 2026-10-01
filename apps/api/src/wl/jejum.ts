@@ -8,7 +8,7 @@ import { Dia, Instante, primeiroErro } from "../lib/validacao.ts";
  * As rotas de jejum do WL, montadas em `/api/wl/jejum`.
  *
  * Arquivo próprio, e não dentro de `rotas.ts`: é o mesmo módulo, mas outro
- * assunto, e o rotas.ts já cuida de pesagens, ações, refeições e pontuação.
+ * assunto, e o rotas.ts já cuida de pesagens, ações e pontuação.
  *
  * Um jejum é um intervalo entre dois instantes, não um dia — é a diferença
  * para o resto do WL, onde pesagem é "o dia 30". O dia a que ele pertence é o

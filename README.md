@@ -106,8 +106,7 @@ apps/
       pagina.tsx            /wl       jejum + nota do dia + calendário
       peso.tsx              /wl/peso  pesagens, meta, IMC e gráfico
       acoes.tsx             O cadastro de ações, numa modal aberta de /wl
-      refeicoes.tsx         O cardápio, noutra modal de /wl
-      dia.tsx               O cartão de pontuação: ações e refeição do dia
+      dia.tsx               O cartão de pontuação e as ações do dia
       calendario.tsx        O mês em quadradinhos
       grafico.tsx           A linha do peso, em SVG puro
       jejum.tsx             O cronômetro no topo, e o histórico noutra modal
@@ -176,19 +175,25 @@ haveria fundo, e acima a barra deixaria de significar "completo".
 teria denominador — dois copos ou vinte dariam dias igualmente indefinidos. O
 alvo é o que fecha a conta; nas ações de marcar uma vez só, ele é 1.
 
-**A refeição do dia entra pela melhor, não pela soma.** O cardápio tem várias
-refeições, cada uma com seus pontos, mas só cabe uma por dia — e é por isso que
-ela é coluna de `wl_dia`, e não uma tabela de ligação: "uma por dia" vira
-estrutura em vez de regra que alguém esquece de aplicar. No denominador entra
-só a **melhor** refeição cadastrada; somar todas faria um 100% que ninguém
-alcança, já que seguir duas é impossível. Escolher uma que vale menos rende
-crédito parcial, que é o comportamento desejado. Os pontos são sempre positivos:
-uma refeição que descontasse quebraria esse máximo.
+**Ação com opções entra pela melhor, não pela soma.** Uma ação pode ter
+alternativas — "qual refeição?", "qual treino?" —, cada uma com seus pontos, e
+escolhe-se uma por dia. No denominador entra só a **melhor** opção; somar todas
+faria um 100% inatingível, já que fazer duas é impossível. Escolher uma que
+vale menos rende crédito parcial, que é o comportamento desejado.
 
-**O passado não se mexe.** Cada registro guarda quantos pontos a ação valia na
-época (`pontos_na_epoca`), a refeição escolhida guarda o seu
-(`refeicao_pontos_na_epoca`), e cada dia guarda o denominador que vigorava nele
-(`wl_dia.pontos_possiveis`). Sem isso, cadastrar um hábito novo hoje rebaixaria
+Opção negativa é permitida (um seletor de deslizes, "qual besteira comi?"), e
+por isso a contribuição da ação para o dia perfeito é o máximo **ou zero**, o
+que for maior: uma ação só de alternativas ruins não tem como somar, só
+descontar quando escolhida.
+
+Numa ação com opções o `pontos` da própria ação fica nulo — os pontos moram nas
+opções. É a API que garante os dois feitios, porque o banco precisaria de
+gatilho para isso. Houve um cadastro de "refeições" à parte antes disso; virou
+caso particular deste mecanismo, e a migração converteu o que já existia.
+
+**O passado não se mexe.** Cada registro guarda quanto valia o que foi marcado
+na época (`pontos_na_epoca` — da opção escolhida, quando há uma), e cada dia
+guarda o denominador que vigorava nele (`wl_dia.pontos_possiveis`). Sem isso, cadastrar um hábito novo hoje rebaixaria
 em silêncio a nota de todos os dias anteriores — e um calendário que muda
 sozinho não serve para olhar para trás. Reabrir um dia o refotografa inteiro:
 numerador e denominador voltam juntos ao cadastro de agora, porque congelar só
@@ -208,10 +213,12 @@ aparece apagado no calendário e fica fora das médias. Esquecer de anotar não 
 o mesmo que um dia ruim, e tratar os dois igual puniria justamente quem passou
 o fim de semana longe do celular.
 
-**Ação ou refeição com histórico se arquiva, não se apaga.** A chave estrangeira é RESTRICT
-e a API responde 409 explicando o porquê: apagar deixaria dias com nota sem
-explicação. Arquivada, a ação some da tela do dia e continua explicando o
-passado — e ainda dá para desmarcá-la num dia antigo, só não marcar de novo.
+**Ação ou opção com histórico se arquiva, não se apaga.** A chave estrangeira é
+RESTRICT e a API responde 409 explicando o porquê: apagar deixaria dias com
+nota sem explicação. Arquivada, a ação some da tela do dia e continua
+explicando o passado — e ainda dá para desmarcá-la num dia antigo, só não
+marcar de novo. Opção que some do formulário segue a mesma regra: é apagada se
+nunca foi escolhida, e arquivada se já.
 
 ### Jejum
 

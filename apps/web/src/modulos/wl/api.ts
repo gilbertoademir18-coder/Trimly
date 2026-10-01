@@ -1,10 +1,18 @@
 import { api } from "../../api.ts";
-import type { Acao, Dia, DiaResumido, Meta, Pesagem, Refeicao } from "./calculos.ts";
+import type { Acao, Dia, DiaResumido, Meta, Pesagem } from "./calculos.ts";
 import type { Jejum } from "./jejum-calculos.ts";
 
-/** O que o cadastro envia: tudo menos o id, que é do banco. */
-export type AcaoNova = Omit<Acao, "id">;
-export type RefeicaoNova = Omit<Refeicao, "id">;
+/**
+ * O que o cadastro de ação envia: tudo menos o id, que é do banco.
+ *
+ * As opções vão junto, e não em rotas próprias: o formulário manda a lista
+ * inteira e o servidor concilia — opção sem `id` é nova, com `id` é edição, e
+ * a que sumiu da lista é apagada ou arquivada conforme já tenha sido usada.
+ */
+export type AcaoNova = Omit<Acao, "id" | "opcoes"> & {
+  opcoes: { id?: number; nome: string; descricao: string | null; pontos: number; ativa: boolean }[];
+};
+
 /** O que o formulário de jejum manda. Instantes em ISO; o dia, em `AAAA-MM-DD`. */
 export type JejumNovo = Omit<Jejum, "id">;
 
@@ -21,23 +29,20 @@ export const wlApi = {
   salvarAcao: (id: number, acao: AcaoNova) => api<Acao>(`/wl/acoes/${id}`, { method: "PUT", corpo: acao }),
   apagarAcao: (id: number) => api<void>(`/wl/acoes/${id}`, { method: "DELETE" }),
 
-  refeicoes: () => api<Refeicao[]>("/wl/refeicoes"),
-  criarRefeicao: (refeicao: RefeicaoNova) =>
-    api<Refeicao>("/wl/refeicoes", { method: "POST", corpo: refeicao }),
-  salvarRefeicao: (id: number, refeicao: RefeicaoNova) =>
-    api<Refeicao>(`/wl/refeicoes/${id}`, { method: "PUT", corpo: refeicao }),
-  apagarRefeicao: (id: number) => api<void>(`/wl/refeicoes/${id}`, { method: "DELETE" }),
-
   dias: (de: string, ate: string) => api<DiaResumido[]>(`/wl/dias?de=${de}&ate=${ate}`),
   dia: (dia: string) => api<Dia>(`/wl/dias/${dia}`),
-  /** Marca, corrige e desmarca (quantidade 0) na mesma rota. Devolve o dia inteiro. */
-  marcar: (dia: string, acaoId: number, quantidade: number) =>
-    api<Dia>(`/wl/dias/${dia}/acoes/${acaoId}`, { method: "PUT", corpo: { quantidade } }),
+  /**
+   * Marca, troca a opção, corrige a quantidade e desmarca (quantidade 0) na
+   * mesma rota. Devolve o dia inteiro, para a tela não fazer segunda viagem.
+   */
+  marcar: (dia: string, acaoId: number, quantidade: number, opcaoId: number | null = null) =>
+    api<Dia>(`/wl/dias/${dia}/acoes/${acaoId}`, { method: "PUT", corpo: { quantidade, opcaoId } }),
   /**
    * Reprecifica um dia com o cadastro de agora: não muda o que foi marcado,
    * só quanto vale. Repetir é inofensivo.
    */
   refotografar: (dia: string) => api<Dia>(`/wl/dias/${dia}/refotografar`, { method: "POST" }),
+
   /** O jejum em andamento, ou `null`. */
   jejumAtual: () => api<Jejum | null>("/wl/jejum/atual"),
   jejuns: (de: string, ate: string) => api<Jejum[]>(`/wl/jejum/intervalos?de=${de}&ate=${ate}`),
@@ -46,8 +51,4 @@ export const wlApi = {
   salvarJejum: (id: number, j: JejumNovo) =>
     api<Jejum>(`/wl/jejum/intervalos/${id}`, { method: "PUT", corpo: j }),
   apagarJejum: (id: number) => api<void>(`/wl/jejum/intervalos/${id}`, { method: "DELETE" }),
-
-  /** Escolhe, troca ou tira (`null`) a refeição do dia. Devolve o dia inteiro. */
-  escolherRefeicao: (dia: string, refeicaoId: number | null) =>
-    api<Dia>(`/wl/dias/${dia}/refeicao`, { method: "PUT", corpo: { refeicaoId } }),
 };

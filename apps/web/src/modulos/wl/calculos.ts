@@ -120,39 +120,55 @@ function limitar(v: number, min: number, max: number) {
  * "completo".
  * ---------------------------------------------------------------------- */
 
-export type Acao = {
+/** Uma alternativa de uma ação com opções. Escolhe-se uma por dia. */
+export type Opcao = {
   id: number;
   nome: string;
+  descricao: string | null;
   /** Positivo soma, negativo desconta. Nunca zero. */
   pontos: number;
-  repetivel: boolean;
-  /** Quantas vezes num dia completo. 1 nas não repetíveis. */
-  alvoDiario: number;
   ativa: boolean;
   ordem: number;
 };
 
-export type Registro = { acaoId: number; quantidade: number; pontosNaEpoca: number };
-
-/** Uma refeição do cardápio. Escolhe-se uma por dia, e os pontos são sempre positivos. */
-export type Refeicao = {
+export type Acao = {
   id: number;
   nome: string;
-  descricao: string | null;
-  pontos: number;
+  /** Positivo soma, negativo desconta. `null` quando os pontos estão nas opções. */
+  pontos: number | null;
+  repetivel: boolean;
+  /** Quantas vezes num dia completo. 1 nas não repetíveis e nas que têm opções. */
+  alvoDiario: number;
   ativa: boolean;
   ordem: number;
+  /** Vazio nas ações comuns; com itens, a ação vira um seletor no dia. */
+  opcoes: Opcao[];
+};
+
+export type Registro = {
+  acaoId: number;
+  /** A opção escolhida, nas ações que têm opções. */
+  opcaoId: number | null;
+  quantidade: number;
+  pontosNaEpoca: number;
 };
 
 /** Um dia aberto na tela: o que foi marcado e o denominador que vigorava nele. */
 export type Dia = {
   data: string;
   pontosPossiveis: number | null;
-  refeicaoId: number | null;
-  /** Quanto a refeição escolhida valia na época. `null` sem refeição. */
-  refeicaoPontosNaEpoca: number | null;
   registros: Registro[];
 };
+
+/** `true` quando a ação é um seletor de alternativas em vez de um botão. */
+export function temOpcoes(a: Acao): boolean {
+  return a.opcoes.length > 0;
+}
+
+/** As opções que ainda podem ser escolhidas, na ordem do cadastro. */
+export function opcoesAtivas(a: Acao): Opcao[] {
+  return a.opcoes.filter((o) => o.ativa);
+}
 
 /** Um dia como o calendário precisa dele: só os dois números. */
 export type DiaResumido = { data: string; pontos: number; pontosPossiveis: number };
@@ -173,38 +189,33 @@ export function somarPontos(registros: Registro[]): number {
 }
 
 /**
- * O "dia perfeito" segundo o cadastro de agora: o que daria 100% hoje.
+ * Quanto uma ação pode render num dia perfeito, em centésimos de ponto.
  *
- * As ações positivas entram pelo alvo diário; as refeições entram pela MELHOR
- * delas, e não pela soma — só cabe uma por dia, então somar todas faria um
- * 100% que ninguém alcança.
+ * Com opções, é a MELHOR delas, e não a soma: só cabe uma por dia, então somar
+ * todas faria um 100% que ninguém alcança. Nunca negativo — uma ação cujas
+ * alternativas são todas ruins (um seletor de deslizes) não tem como somar
+ * para o dia perfeito, só como descontar quando escolhida.
+ */
+function contribuicaoEmCentesimos(a: Acao): number {
+  if (!a.ativa) return 0;
+
+  if (temOpcoes(a)) {
+    return opcoesAtivas(a).reduce((melhor, o) => Math.max(melhor, Math.round(o.pontos * 100)), 0);
+  }
+
+  if (a.pontos === null || a.pontos <= 0) return 0;
+  return Math.round(a.pontos * 100) * a.alvoDiario;
+}
+
+/**
+ * O "dia perfeito" segundo o cadastro de agora: o que daria 100% hoje.
  *
  * A tela do cadastro mostra este número para a conta não ser um mistério. O
  * valor que vale para um dia já registrado é o que veio do servidor, congelado
  * — este aqui é só o de hoje em diante.
  */
-export function pontosPossiveis(acoes: Acao[], refeicoes: Refeicao[] = []): number {
-  const dasAcoes = acoes
-    .filter((a) => a.ativa && a.pontos > 0)
-    .reduce((soma, a) => soma + Math.round(a.pontos * 100) * a.alvoDiario, 0);
-
-  const daMelhorRefeicao = refeicoes
-    .filter((r) => r.ativa)
-    .reduce((melhor, r) => Math.max(melhor, Math.round(r.pontos * 100)), 0);
-
-  return (dasAcoes + daMelhorRefeicao) / 100;
-}
-
-/**
- * Os pontos que um dia somou: as ações marcadas mais a refeição escolhida.
- *
- * Em centésimos pelo mesmo motivo de `somarPontos` — os dois valores já vêm
- * com duas casas, então a soma de inteiros é exata.
- */
-export function pontosDoDia(dia: Dia): number {
-  const centesimos =
-    Math.round(somarPontos(dia.registros) * 100) + Math.round((dia.refeicaoPontosNaEpoca ?? 0) * 100);
-  return centesimos / 100;
+export function pontosPossiveis(acoes: Acao[]): number {
+  return acoes.reduce((soma, a) => soma + contribuicaoEmCentesimos(a), 0) / 100;
 }
 
 /**
@@ -216,7 +227,10 @@ export function pontosDoDia(dia: Dia): number {
  * API já entrega por `ordem` e depois nome.
  */
 export function ordenarAcoes(acoes: Acao[]): Acao[] {
-  return [...acoes].sort((a, b) => Number(b.pontos > 0) - Number(a.pontos > 0));
+  // Numa ação com opções, "soma" é ter ao menos uma alternativa que soma.
+  const soma = (a: Acao) =>
+    temOpcoes(a) ? opcoesAtivas(a).some((o) => o.pontos > 0) : (a.pontos ?? 0) > 0;
+  return [...acoes].sort((a, b) => Number(soma(b)) - Number(soma(a)));
 }
 
 /**

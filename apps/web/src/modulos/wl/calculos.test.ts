@@ -8,17 +8,40 @@ import {
   marcasDoEixo,
   mediaPontuacao,
   mudarMes,
+  opcoesAtivas,
   ordenarAcoes,
-  pontosDoDia,
   pontosPossiveis,
   pontuarDia,
   resumir,
   semanasDoMes,
   somarPontos,
+  temOpcoes,
   type Acao,
+  type Opcao,
   type Pesagem,
-  type Refeicao,
 } from "./calculos.ts";
+
+/** Uma ação comum, sem opções. */
+const umaAcao = (campos: Partial<Acao> = {}): Acao => ({
+  id: 1,
+  nome: "a",
+  pontos: 1,
+  repetivel: false,
+  alvoDiario: 1,
+  ativa: true,
+  ordem: 0,
+  opcoes: [],
+  ...campos,
+});
+
+const umaOpcao = (pontos: number, ativa = true): Opcao => ({
+  id: 1,
+  nome: "o",
+  descricao: null,
+  pontos,
+  ativa,
+  ordem: 0,
+});
 
 const p = (data: string, pesoKg: number): Pesagem => ({ data, pesoKg, nota: null });
 
@@ -103,7 +126,12 @@ describe("marcasDoEixo", () => {
 });
 
 describe("somarPontos", () => {
-  const reg = (pontosNaEpoca: number, quantidade = 1) => ({ acaoId: 1, quantidade, pontosNaEpoca });
+  const reg = (pontosNaEpoca: number, quantidade = 1) => ({
+    acaoId: 1,
+    opcaoId: null,
+    quantidade,
+    pontosNaEpoca,
+  });
 
   it("soma positivos e negativos", () => {
     expect(somarPontos([reg(3), reg(4), reg(-2)])).toBe(5);
@@ -125,17 +153,15 @@ describe("somarPontos", () => {
 });
 
 describe("pontosPossiveis", () => {
-  const acao = (p: Partial<Acao>): Acao => ({
-    id: 1, nome: "x", pontos: 1, repetivel: false, alvoDiario: 1, ativa: true, ordem: 0, ...p,
-  });
-
   it("soma só as positivas e ativas", () => {
-    expect(pontosPossiveis([acao({ pontos: 3 }), acao({ pontos: 4 }), acao({ pontos: -2 })])).toBe(7);
-    expect(pontosPossiveis([acao({ pontos: 3 }), acao({ pontos: 4, ativa: false })])).toBe(3);
+    expect(
+      pontosPossiveis([umaAcao({ pontos: 3 }), umaAcao({ pontos: 4 }), umaAcao({ pontos: -2 })]),
+    ).toBe(7);
+    expect(pontosPossiveis([umaAcao({ pontos: 3 }), umaAcao({ pontos: 4, ativa: false })])).toBe(3);
   });
 
   it("conta a repetível pelo alvo diário", () => {
-    expect(pontosPossiveis([acao({ pontos: 1, repetivel: true, alvoDiario: 8 })])).toBe(8);
+    expect(pontosPossiveis([umaAcao({ pontos: 1, repetivel: true, alvoDiario: 8 })])).toBe(8);
   });
 
   it("cadastro vazio vale zero", () => {
@@ -144,9 +170,7 @@ describe("pontosPossiveis", () => {
 });
 
 describe("ordenarAcoes", () => {
-  const acao = (id: number, pontos: number): Acao => ({
-    id, nome: "a" + id, pontos, repetivel: false, alvoDiario: 1, ativa: true, ordem: 0,
-  });
+  const acao = (id: number, pontos: number): Acao => umaAcao({ id, nome: "a" + id, pontos });
 
   it("põe as que somam antes das que descontam", () => {
     const ordenadas = ordenarAcoes([acao(1, -2), acao(2, 3), acao(3, -1), acao(4, 5)]);
@@ -168,54 +192,71 @@ describe("ordenarAcoes", () => {
     expect(ordenarAcoes([])).toEqual([]);
     expect(ordenarAcoes([acao(1, -2), acao(2, -3)]).map((a) => a.id)).toEqual([1, 2]);
   });
+
+  it("ação com opções conta como positiva se alguma opção soma", () => {
+    const comOpcoes = umaAcao({
+      id: 9,
+      pontos: null,
+      opcoes: [umaOpcao(-3), { ...umaOpcao(5), id: 2 }],
+    });
+    expect(ordenarAcoes([acao(1, -2), comOpcoes]).map((a) => a.id)).toEqual([9, 1]);
+  });
+
+  it("ação só de opções negativas conta como negativa", () => {
+    const sóRuins = umaAcao({ id: 9, pontos: null, opcoes: [umaOpcao(-3)] });
+    expect(ordenarAcoes([sóRuins, acao(1, 2)]).map((a) => a.id)).toEqual([1, 9]);
+  });
 });
 
-describe("pontosPossiveis com refeições", () => {
-  const acao = (pontos: number): Acao => ({
-    id: 1, nome: "a", pontos, repetivel: false, alvoDiario: 1, ativa: true, ordem: 0,
-  });
-  const refeicao = (pontos: number, ativa = true): Refeicao => ({
-    id: 1, nome: "r", descricao: null, pontos, ativa, ordem: 0,
-  });
+describe("pontosPossiveis com ações que têm opções", () => {
+  const com = (...pontos: number[]): Acao =>
+    umaAcao({
+      pontos: null,
+      opcoes: pontos.map((p, i) => ({ ...umaOpcao(p), id: i + 1 })),
+    });
 
-  it("conta a melhor refeição, e não a soma delas", () => {
+  it("conta a melhor opção, e não a soma delas", () => {
     // Só cabe uma por dia: somar 4 + 2 + 3 faria um 100% inatingível.
-    expect(pontosPossiveis([acao(6)], [refeicao(4), refeicao(2), refeicao(3)])).toBe(10);
+    expect(pontosPossiveis([umaAcao({ pontos: 6 }), com(4, 2, 3)])).toBe(10);
   });
 
-  it("ignora refeição arquivada ao escolher a melhor", () => {
-    expect(pontosPossiveis([acao(6)], [refeicao(9, false), refeicao(2)])).toBe(8);
+  it("ignora opção arquivada ao escolher a melhor", () => {
+    const acao = umaAcao({
+      pontos: null,
+      opcoes: [{ ...umaOpcao(9, false), id: 1 }, { ...umaOpcao(2), id: 2 }],
+    });
+    expect(pontosPossiveis([umaAcao({ pontos: 6 }), acao])).toBe(8);
   });
 
-  it("sem refeição cadastrada, o denominador é só o das ações", () => {
-    expect(pontosPossiveis([acao(6)], [])).toBe(6);
-    expect(pontosPossiveis([acao(6)])).toBe(6);
+  it("ação só de opções negativas não soma para o dia perfeito", () => {
+    // Um seletor de deslizes ("qual besteira comi?") só tem como descontar.
+    expect(pontosPossiveis([umaAcao({ pontos: 6 }), com(-4, -2)])).toBe(6);
+  });
+
+  it("ação com opções arquivada não entra", () => {
+    const acao = umaAcao({ pontos: null, ativa: false, opcoes: [umaOpcao(9)] });
+    expect(pontosPossiveis([umaAcao({ pontos: 6 }), acao])).toBe(6);
+  });
+
+  it("o alvo diário não multiplica ação com opções", () => {
+    // Escolhe-se uma por dia: repetir não existe aqui.
+    const acao = umaAcao({ pontos: null, alvoDiario: 8, opcoes: [umaOpcao(5)] });
+    expect(pontosPossiveis([acao])).toBe(5);
   });
 });
 
-describe("pontosDoDia", () => {
-  const dia = (registros: { pontosNaEpoca: number; quantidade: number }[], refeicao: number | null) => ({
-    data: "2026-09-10",
-    pontosPossiveis: 10,
-    refeicaoId: refeicao === null ? null : 1,
-    refeicaoPontosNaEpoca: refeicao,
-    registros: registros.map((r, i) => ({ acaoId: i + 1, ...r })),
+describe("temOpcoes e opcoesAtivas", () => {
+  it("distingue a ação comum da que tem opções", () => {
+    expect(temOpcoes(umaAcao())).toBe(false);
+    expect(temOpcoes(umaAcao({ pontos: null, opcoes: [umaOpcao(3)] }))).toBe(true);
   });
 
-  it("soma as ações marcadas e a refeição escolhida", () => {
-    expect(pontosDoDia(dia([{ pontosNaEpoca: 6, quantidade: 1 }], 4))).toBe(10);
-  });
-
-  it("dia sem refeição conta só as ações", () => {
-    expect(pontosDoDia(dia([{ pontosNaEpoca: 6, quantidade: 1 }], null))).toBe(6);
-  });
-
-  it("dia só com refeição conta só ela", () => {
-    expect(pontosDoDia(dia([], 4))).toBe(4);
-  });
-
-  it("não acumula erro de float", () => {
-    expect(pontosDoDia(dia([{ pontosNaEpoca: 0.1, quantidade: 1 }], 0.2))).toBe(0.3);
+  it("opcoesAtivas deixa as arquivadas de fora", () => {
+    const acao = umaAcao({
+      pontos: null,
+      opcoes: [{ ...umaOpcao(3), id: 1 }, { ...umaOpcao(4, false), id: 2 }],
+    });
+    expect(opcoesAtivas(acao).map((o) => o.id)).toEqual([1]);
   });
 });
 

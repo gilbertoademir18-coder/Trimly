@@ -5,13 +5,12 @@ import { PainelAcoes } from "./acoes.tsx";
 import { wlApi } from "./api.ts";
 import { Aviso } from "./aviso.tsx";
 import { Calendario } from "./calendario.tsx";
-import { diaLocal, type Acao, type Refeicao } from "./calculos.ts";
+import { diaLocal, type Acao } from "./calculos.ts";
 import { CartaoDoDia } from "./dia.tsx";
 import { BlocoJejum, PainelJejum } from "./jejum.tsx";
-import { PainelRefeicoes } from "./refeicoes.tsx";
 
 /** Qual janela está aberta, se alguma. */
-type Janela = "acoes" | "refeicoes" | "jejum" | null;
+type Janela = "acoes" | "jejum" | null;
 
 /**
  * A tela do dia a dia do WL: a nota de hoje, o que a forma e o mês inteiro
@@ -20,16 +19,15 @@ type Janela = "acoes" | "refeicoes" | "jejum" | null;
  * O jejum abre a tela: enquanto um corre, o cronômetro é a informação viva.
  *
  * O peso tem tela própria — é outro ritmo, pesa-se uma vez de manhã. Os
- * cadastros (ações, refeições) e o histórico de jejuns são modais daqui mesmo:
+ * O cadastro de ações e o histórico de jejuns são modais daqui mesmo:
  * mexer neles é uma pausa no meio de marcar o dia, e sair da página perderia a
  * rolagem do calendário.
  *
- * As duas listas moram aqui porque o cartão do dia precisa das duas, e cada
- * painel precisa da outra para mostrar o dia perfeito completo.
+ * A lista de ações mora aqui porque o cartão do dia precisa dela — e uma ação
+ * pode ter opções, que é o que antes era um cadastro de refeições à parte.
  */
 export function PaginaWl() {
   const [acoes, setAcoes] = useState<Acao[] | null>(null);
-  const [refeicoes, setRefeicoes] = useState<Refeicao[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   // O dia aberto no cartão de pontuação. Trocar de dia no calendário só muda
   // este estado: o cartão busca o dia escolhido sozinho.
@@ -45,9 +43,7 @@ export function PaginaWl() {
 
   const carregar = useCallback(async () => {
     try {
-      const [a, r] = await Promise.all([wlApi.acoes(), wlApi.refeicoes()]);
-      setAcoes(a);
-      setRefeicoes(r);
+      setAcoes(await wlApi.acoes());
       setErro(null);
     } catch (e) {
       setErro((e as Error).message);
@@ -80,7 +76,7 @@ export function PaginaWl() {
   }, [carregar]);
 
   if (erro && !acoes) return <Aviso texto={erro} />;
-  if (!acoes || !refeicoes) return <p className="text-tinta-3">Carregando…</p>;
+  if (!acoes) return <p className="text-tinta-3">Carregando…</p>;
 
   const hoje = diaLocal();
 
@@ -104,35 +100,24 @@ export function PaginaWl() {
       <CartaoDoDia
         dia={diaAberto}
         acoes={acoes}
-        refeicoes={refeicoes}
         versaoCadastro={versaoCadastro}
         aoMudar={() => setVersao((v) => v + 1)}
         aoAbrirAcoes={() => setJanela("acoes")}
-        aoAbrirRefeicoes={() => setJanela("refeicoes")}
       />
 
       <Calendario hoje={hoje} selecionado={diaAberto} versao={versao} aoSelecionar={setDiaAberto} />
 
-      <nav className="grid gap-3 sm:grid-cols-3">
+      <nav className="grid gap-3 sm:grid-cols-2">
         <Atalho rota="/wl/peso" nome="Peso" descricao="Pesagens, meta, IMC e o gráfico." />
         <Atalho
           aoTocar={() => setJanela("acoes")}
           nome="Ações"
-          descricao="O que soma e o que desconta no dia."
-        />
-        <Atalho
-          aoTocar={() => setJanela("refeicoes")}
-          nome="Refeições"
-          descricao="O cardápio de onde sai a refeição do dia."
+          descricao="O que soma, o que desconta, e as que têm opções."
         />
       </nav>
 
       <Modal aberto={janela === "acoes"} titulo="Ações" aoFechar={() => setJanela(null)}>
-        <PainelAcoes refeicoes={refeicoes} aoMudar={() => void aoMudarCadastro()} />
-      </Modal>
-
-      <Modal aberto={janela === "refeicoes"} titulo="Refeições" aoFechar={() => setJanela(null)}>
-        <PainelRefeicoes acoes={acoes} aoMudar={() => void aoMudarCadastro()} />
+        <PainelAcoes aoMudar={() => void aoMudarCadastro()} />
       </Modal>
 
       <Modal aberto={janela === "jejum"} titulo="Jejuns" aoFechar={() => setJanela(null)}>

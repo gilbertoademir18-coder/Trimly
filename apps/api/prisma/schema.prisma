@@ -42,9 +42,12 @@ model WlMeta {
 /// DECIMAL e não float porque estes números entram em somas: 0,1 + 0,2 daria
 /// 0,30000000000000004, o mesmo motivo do peso.
 model WlAcao {
-  id     Int     @id @default(autoincrement())
-  nome   String
-  pontos Decimal @db.Decimal(5, 2)
+  id   Int    @id @default(autoincrement())
+  nome String
+
+  /// `null` quando os pontos moram nas opções: a ação vira um seletor no dia
+  /// ("qual refeição?", "qual treino?") e cada opção vale o seu.
+  pontos Decimal? @db.Decimal(5, 2)
 
   /// "1 copo de água" conta várias vezes no mesmo dia; "treinar", não.
   repetivel Boolean @default(false)
@@ -66,8 +69,37 @@ model WlAcao {
   editadoEm DateTime @updatedAt @map("editado_em") @db.Timestamptz
 
   registros WlRegistro[]
+  opcoes    WlAcaoOpcao[]
 
   @@map("wl_acao")
+}
+
+/// Uma alternativa de uma ação com opções.
+///
+/// Escolhe-se uma por dia — por isso o registro aponta para uma só. O "dia
+/// perfeito" conta a MELHOR opção da ação, e não a soma: somar todas faria um
+/// 100% inatingível, já que só cabe uma. Escolher uma que vale menos rende
+/// crédito parcial.
+model WlAcaoOpcao {
+  id        Int     @id @default(autoincrement())
+  acaoId    Int     @map("acao_id")
+  nome      String
+  descricao String?
+  pontos    Decimal @db.Decimal(5, 2)
+
+  /// Arquivar em vez de apagar, como nas ações: opção já escolhida em algum dia
+  /// não pode sumir sem deixar a nota daquele dia sem explicação.
+  ativa Boolean @default(true)
+  ordem Int     @default(0)
+
+  criadoEm  DateTime @default(now()) @map("criado_em") @db.Timestamptz
+  editadoEm DateTime @updatedAt @map("editado_em") @db.Timestamptz
+
+  acao      WlAcao       @relation(fields: [acaoId], references: [id], onDelete: Cascade)
+  registros WlRegistro[]
+
+  @@index([acaoId])
+  @@map("wl_acao_opcao")
 }
 
 /// Uma ação feita (ou cometida) num dia.
@@ -77,17 +109,23 @@ model WlAcao {
 /// de todos os dias passados — e um calendário que muda sozinho não serve para
 /// olhar para trás.
 model WlRegistro {
-  data          DateTime @db.Date
-  acaoId        Int      @map("acao_id")
-  quantidade    Int      @default(1)
-  pontosNaEpoca Decimal  @map("pontos_na_epoca") @db.Decimal(5, 2)
+  data       DateTime @db.Date
+  acaoId     Int      @map("acao_id")
+  quantidade Int      @default(1)
+
+  /// A opção escolhida, nas ações que têm opções. `null` nas demais.
+  opcaoId Int? @map("opcao_id")
+
+  /// Quanto valia o que foi marcado — a opção, quando há uma; a ação, quando não.
+  pontosNaEpoca Decimal @map("pontos_na_epoca") @db.Decimal(5, 2)
 
   criadoEm  DateTime @default(now()) @map("criado_em") @db.Timestamptz
   editadoEm DateTime @updatedAt @map("editado_em") @db.Timestamptz
 
   // Restrict e não Cascade: apagar uma ação usada é erro, não decisão em
   // cascata. O caminho é arquivar (`ativa = false`).
-  acao WlAcao @relation(fields: [acaoId], references: [id], onDelete: Restrict)
+  acao  WlAcao       @relation(fields: [acaoId], references: [id], onDelete: Restrict)
+  opcao WlAcaoOpcao? @relation(fields: [opcaoId], references: [id], onDelete: Restrict)
 
   @@id([data, acaoId])
   @@map("wl_registro")
@@ -103,43 +141,9 @@ model WlDia {
   data            DateTime @id @db.Date
   pontosPossiveis Decimal  @map("pontos_possiveis") @db.Decimal(6, 2)
 
-  /// A refeição escolhida no dia, e quanto ela valia na época.
-  ///
-  /// Coluna no dia, e não tabela de ligação: "uma refeição por dia" vira
-  /// estrutura, e não regra que alguém pode esquecer de aplicar. Os pontos vêm
-  /// congelados junto, pelo mesmo motivo do `pontos_na_epoca` dos registros.
-  refeicaoId            Int?     @map("refeicao_id")
-  refeicaoPontosNaEpoca Decimal? @map("refeicao_pontos_na_epoca") @db.Decimal(5, 2)
-
   editadoEm DateTime @updatedAt @map("editado_em") @db.Timestamptz
-
-  refeicao WlRefeicao? @relation(fields: [refeicaoId], references: [id], onDelete: Restrict)
 
   @@map("wl_dia")
-}
-
-/// Uma refeição saudável do cardápio: escolhe-se uma por dia.
-///
-/// Os pontos são sempre positivos. O "dia perfeito" conta a melhor refeição
-/// cadastrada — somar todas faria um 100% inatingível, já que só cabe uma —, e
-/// um valor negativo quebraria esse máximo.
-model WlRefeicao {
-  id        Int     @id @default(autoincrement())
-  nome      String
-  descricao String?
-  pontos    Decimal @db.Decimal(5, 2)
-
-  /// Arquivar em vez de apagar, como nas ações: refeição já escolhida em algum
-  /// dia não pode sumir sem deixar a nota daquele dia sem explicação.
-  ativa Boolean @default(true)
-  ordem Int     @default(0)
-
-  criadoEm  DateTime @default(now()) @map("criado_em") @db.Timestamptz
-  editadoEm DateTime @updatedAt @map("editado_em") @db.Timestamptz
-
-  dias WlDia[]
-
-  @@map("wl_refeicao")
 }
 
 /// Um intervalo de jejum.
