@@ -3,6 +3,7 @@ import { wlApi } from "./api.ts";
 import {
   acharGrupo,
   acoesDoGrupo,
+  diaLocal,
   formatarDia,
   formatarPontuacao,
   opcoesAtivas,
@@ -156,7 +157,10 @@ export function CartaoDoDia({
       <div className="flex items-start justify-between gap-3">
         <div>
           <h2 className="font-medium">Pontuação do dia</h2>
-          <p className="text-xs text-tinta-3">{formatarDia(dia, true)}</p>
+          <p className="text-xs text-tinta-3">
+            {formatarDia(dia, true)}
+            {dia > diaLocal() && " · ainda não chegou"}
+          </p>
         </div>
         <div className="text-right">
           <div className="tabular text-3xl font-semibold tracking-tight">

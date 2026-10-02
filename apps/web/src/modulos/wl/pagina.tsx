@@ -64,8 +64,9 @@ export function PaginaWl() {
    *
    * O dia de hoje é reprecificado no servidor, porque ele ainda está sendo
    * vivido — mudar quanto vale um hábito ao meio-dia vale para o dia inteiro.
-   * Os dias passados ficam como estão: eles só são reavaliados se você reabrir
-   * um deles e mexer.
+   * Os dias futuros já planejados vão junto (o servidor cuida disso). Os
+   * passados ficam como estão: eles só são reavaliados se você reabrir um deles
+   * e mexer.
    */
   const aoMudarCadastro = useCallback(async () => {
     try {

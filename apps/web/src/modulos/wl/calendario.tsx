@@ -65,7 +65,9 @@ export function Calendario({
   }, [carregar, versao]);
 
   const porDia = new Map((dias ?? []).map((d) => [d.data, d]));
-  const media = dias ? mediaPontuacao(dias) : null;
+  // A média é do que já foi vivido: um dia futuro marcado de antemão é plano,
+  // não resultado.
+  const media = dias ? mediaPontuacao(dias.filter((d) => d.data <= hoje)) : null;
 
   function andar(passo: number) {
     const destino = mudarMes(ano, mes, passo);
@@ -73,14 +75,30 @@ export function Calendario({
     setMes(destino.mes);
   }
 
-  // O mês de hoje é o último que faz sentido abrir: adiante não há o que ver.
-  const noFuturo = ano * 12 + mes >= Number(hoje.slice(0, 4)) * 12 + Number(hoje.slice(5, 7));
+  function voltarParaHoje() {
+    setAno(Number(hoje.slice(0, 4)));
+    setMes(Number(hoje.slice(5, 7)));
+    aoSelecionar(hoje);
+  }
+
+  // Os dias futuros abrem também — é onde se deixa o grupo escolhido e se
+  // confere as ações antes de o dia chegar. Daí o atalho de volta para hoje.
+  const longeDeHoje = selecionado !== hoje || hoje.slice(0, 7) !== `${ano}-${String(mes).padStart(2, "0")}`;
 
   return (
     <section className="rounded-2xl border border-borda bg-superficie p-4">
       <div className="mb-3 flex items-center justify-between gap-2">
         <h2 className="font-medium first-letter:uppercase">{formatarMes(ano, mes)}</h2>
         <div className="flex items-center gap-1">
+          {longeDeHoje && (
+            <button
+              type="button"
+              onClick={voltarParaHoje}
+              className="h-8 rounded-full border border-borda px-3 text-xs text-tinta-2"
+            >
+              Hoje
+            </button>
+          )}
           <button
             type="button"
             onClick={() => andar(-1)}
@@ -92,9 +110,8 @@ export function Calendario({
           <button
             type="button"
             onClick={() => andar(1)}
-            disabled={noFuturo}
             aria-label="Próximo mês"
-            className="size-8 rounded-full border border-borda text-tinta-2 disabled:opacity-40"
+            className="size-8 rounded-full border border-borda text-tinta-2"
           >
             ›
           </button>
@@ -124,14 +141,21 @@ export function Calendario({
                 key={dia}
                 type="button"
                 onClick={() => aoSelecionar(dia)}
-                disabled={futuro}
-                title={nota === null ? "Sem registro" : formatarPontuacao(nota)}
-                aria-label={dia + (nota === null ? ": sem registro" : ": " + formatarPontuacao(nota))}
+                title={futuro ? "Dia futuro" : nota === null ? "Sem registro" : formatarPontuacao(nota)}
+                aria-label={
+                  dia + (futuro ? ": futuro" : nota === null ? ": sem registro" : ": " + formatarPontuacao(nota))
+                }
                 aria-current={dia === selecionado ? "date" : undefined}
+                // O futuro fica só contornado: ainda não tem nota para pintar,
+                // e o quadradinho cheio de cinza diria "dia sem registro".
                 className={
-                  "tabular aspect-square rounded-lg text-xs transition-colors disabled:opacity-30 " +
-                  (nota === null ? "bg-grade text-tinta-3" : CORES[faixaDaPontuacao(nota)]) +
-                  (nota !== null && faixaDaPontuacao(nota) === 4 ? " text-sobre-destaque" : "") +
+                  "tabular aspect-square rounded-lg text-xs transition-colors " +
+                  (futuro
+                    ? "border border-dashed border-borda text-tinta-3"
+                    : nota === null
+                      ? "bg-grade text-tinta-3"
+                      : CORES[faixaDaPontuacao(nota)]) +
+                  (!futuro && nota !== null && faixaDaPontuacao(nota) === 4 ? " text-sobre-destaque" : "") +
                   (dia === selecionado ? " ring-2 ring-destaque" : "") +
                   (dia === hoje ? " font-semibold" : "")
                 }

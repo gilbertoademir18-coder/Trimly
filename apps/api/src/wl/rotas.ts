@@ -356,8 +356,11 @@ async function refotografarDia(tx: Prisma.TransactionClient, data: Date) {
 
   // Dia sem registro não ganha linha em `wl_dia`: ele fica neutro no
   // calendário, em vez de virar um zero que puxa a média para baixo só porque
-  // ninguém anotou nada.
-  if (registros.length === 0) {
+  // ninguém anotou nada. A exceção é o dia em que alguém escolheu o grupo —
+  // típico de deixar a semana que vem planejada. A linha guarda a escolha, e o
+  // calendário continua tratando o dia como neutro (ele só lê dias com
+  // registro).
+  if (registros.length === 0 && dia?.grupoId == null) {
     await tx.wlDia.deleteMany({ where: { data } });
     return null;
   }
@@ -580,16 +583,28 @@ export async function rotasWl(app: FastifyInstance) {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id < 1) return reply.code(400).send({ erro: "Id inválido." });
 
-    const usos = await prisma.wlDia.count({ where: { grupoId: id } });
+    // Só conta dia com registro: o que tem apenas o grupo escolhido é um
+    // plano, não histórico.
+    const dias = await prisma.wlDia.findMany({ where: { grupoId: id }, select: { data: true } });
+    const comRegistro = await prisma.wlRegistro.findMany({
+      where: { data: { in: dias.map((d) => d.data) } },
+      distinct: ["data"],
+      select: { data: true },
+    });
+    const usos = comRegistro.length;
     if (usos > 0) {
       return reply.code(409).send({
         erro: `Este grupo já valeu em ${usos} ${usos === 1 ? "dia" : "dias"}. Arquive em vez de apagar, para o histórico continuar explicável.`,
       });
     }
 
-    // As ligações com as ações caem junto (a chave é CASCADE): elas não são
-    // dado em si, só a ligação.
-    await prisma.wlGrupo.deleteMany({ where: { id } });
+    // Os dias planejados com este grupo voltam a seguir o dia da semana — a
+    // linha deles só existia para guardar a escolha. As ligações com as ações
+    // caem junto (a chave é CASCADE): elas não são dado em si, só a ligação.
+    await prisma.$transaction([
+      prisma.wlDia.deleteMany({ where: { grupoId: id } }),
+      prisma.wlGrupo.deleteMany({ where: { id } }),
+    ]);
     return reply.code(204).send();
   });
 
@@ -599,8 +614,9 @@ export async function rotasWl(app: FastifyInstance) {
 
   /*
    * O calendário pede um intervalo e recebe só os dias que têm registro. Dia
-   * sem linha é dia neutro: ele não vem, e a tela o desenha apagado em vez de
-   * fingir um zero.
+   * sem registro é dia neutro: ele não vem, e a tela o desenha apagado em vez
+   * de fingir um zero. Por isso o JOIN, e não LEFT JOIN: um dia que só tem o
+   * grupo escolhido também tem linha em `wl_dia`, e não pode virar 0%.
    */
   app.get("/dias", async (req, reply) => {
     const intervalo = Intervalo.safeParse(req.query);
@@ -611,7 +627,7 @@ export async function rotasWl(app: FastifyInstance) {
              COALESCE(SUM(r."pontos_na_epoca" * r."quantidade"), 0)::float8 AS pontos,
              d."pontos_possiveis"::float8 AS possiveis
       FROM "wl_dia" d
-      LEFT JOIN "wl_registro" r ON r."data" = d."data"
+      JOIN "wl_registro" r ON r."data" = d."data"
       WHERE d."data" BETWEEN ${intervalo.data.de} AND ${intervalo.data.ate}
       GROUP BY d."data", d."pontos_possiveis"
       ORDER BY d."data"
@@ -636,6 +652,9 @@ export async function rotasWl(app: FastifyInstance) {
    * aparelho considera hoje — a mesma regra do resto do WL: quem decide que dia
    * é hoje é o celular de quem está usando, nunca o fuso do servidor.
    *
+   * Os dias depois dele vão junto: um dia futuro já planejado (grupo escolhido,
+   * algo marcado) ainda nem começou, e tem que chegar com o cadastro de agora.
+   *
    * Não muda o que foi marcado, só o quanto vale. Repetir é inofensivo.
    */
   app.post<{ Params: { dia: string } }>("/dias/:dia/refotografar", async (req, reply) => {
@@ -643,7 +662,10 @@ export async function rotasWl(app: FastifyInstance) {
     if (!dia.success) return reply.code(400).send({ erro: primeiroErro(dia.error) });
 
     await prisma.$transaction(async (tx) => {
-      await refotografarDia(tx, dia.data);
+      const adiante = await tx.wlDia.findMany({ where: { data: { gt: dia.data } }, select: { data: true } });
+      for (const data of [dia.data, ...adiante.map((d) => d.data)]) {
+        await refotografarDia(tx, data);
+      }
     });
     return lerDia(dia.data);
   });
