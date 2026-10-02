@@ -452,7 +452,12 @@ function FormAcao({
                 ))}
               </div>
             )}
-            {emGrupos.length === 0 && grupos.length > 0 && (
+            {/*
+              No formulário em branco o aviso espera o nome: ele fica sempre à
+              vista, e reclamar de grupo antes de existir ação só parecia que a
+              ação recém-editada tinha perdido os dela.
+            */}
+            {emGrupos.length === 0 && grupos.length > 0 && (acao || nome.trim()) && (
               <span className="mt-1 block text-xs text-atencao">
                 Sem grupo, a ação não aparece em dia nenhum.
               </span>
