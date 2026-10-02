@@ -49,6 +49,7 @@ Trimly) — o README de lá conta os porquês em detalhe.
 | Copiar link do celular | Copia a URL HTTPS do tailnet |
 | Abrir no VS Code | Abre `Trimly.code-workspace` |
 | Abrir a pasta do projeto | Abre a pasta do código-fonte no Explorer |
+| **Publicar a versão nova** | Confere, faz backup e só então reinicia — ver abaixo |
 | Reiniciar o servidor | Aplica migrações pendentes, recompila o front e sobe de novo |
 | Fazer backup do banco | Roda `scripts\backup-banco.ps1` numa janela |
 | Iniciar com o Windows | Liga e desliga a subida automática no login |
@@ -68,8 +69,27 @@ O selo fica no canto **inferior** direito, igual ao do NihongoHub: com os dois
 
 O ícone sobe `npm run servir`: aplica migrações, compila o front e sobe a API,
 que serve o front pronto na **porta 3200**. Uma porta, um processo, e o
-service worker do PWA funcionando como em produção. Depois de um `git pull`,
-**Reiniciar** é tudo o que se precisa.
+service worker do PWA funcionando como em produção.
+
+### Publicar uma versão nova
+
+Depois de mexer no código (ou de um `git pull`), use **Publicar a versão
+nova**. Ele abre uma janela que roda `scripts\publicar.ps1`: TypeScript,
+testes, um build de conferência e o backup do banco — tudo com a versão antiga
+ainda no ar. Só se tudo passar o tray reinicia o servidor, e o reinício aplica
+as migrações. Se algo falha, a janela fica aberta com o erro e o app do celular
+nem percebe.
+
+**Reiniciar** sozinho derruba o servidor antes de compilar: um erro ali deixa o
+app fora do ar até ser consertado. Serve para destravar, não para publicar.
+
+O build de conferência vai para uma pasta temporária, e não para
+`apps\web\dist`: é dali que o servidor no ar serve o app, e o Vite esvazia a
+pasta antes de escrever.
+
+O que vai ao ar é o que está na pasta — o branch atual, inclusive o que não foi
+commitado. A janela mostra os dois. No celular, o app pega a versão nova na
+próxima vez que for aberto (o service worker se atualiza sozinho).
 
 Para mexer no código, `npm run dev` sobe o Vite (3210, recarga instantânea) e
 a API em modo watch (3201) — portas diferentes, então dá para desenvolver com
@@ -118,6 +138,7 @@ apps/
 scripts/
   tray.ps1                Ícone da bandeja
   criar-banco.ps1         Usuário + banco + .env + migrações
+  publicar.ps1            Confere e faz backup antes de a versão nova ir ao ar
   publicar-no-tailnet.ps1 tailscale serve na 8443
   backup-banco.ps1        pg_dump com verificação
 ```
@@ -228,10 +249,17 @@ quando você marcou a primeira coisa de manhã. Por isso o front chama
 `POST /api/wl/dias/:dia/refotografar` depois de mexer no cadastro, passando o
 dia que o aparelho considera hoje. Quem decide que dia é hoje continua sendo o
 celular de quem está usando, nunca o fuso do servidor. Os dias anteriores
-seguem parados.
+seguem parados; os **futuros** que já têm linha (grupo escolhido de antemão,
+algo marcado) vão junto, porque ainda nem começaram.
 
-**Dia sem registro é neutro, não é zero.** Ele não ganha linha em `wl_dia`,
-aparece apagado no calendário e fica fora das médias. Esquecer de anotar não é
+**Dá para planejar os dias que vêm.** O calendário abre o futuro, e escolher o
+grupo de um dia sem nada marcado fica gravado — é a única situação em que um
+dia sem registro tem linha em `wl_dia`. Fora da média do mês, que só conta até
+hoje.
+
+**Dia sem registro é neutro, não é zero.** Ele aparece apagado no calendário e
+fica fora das médias: o `/dias` só devolve dia que tem registro, mesmo que ele
+tenha linha só para guardar o grupo. Esquecer de anotar não é
 o mesmo que um dia ruim, e tratar os dois igual puniria justamente quem passou
 o fim de semana longe do celular.
 

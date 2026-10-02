@@ -388,6 +388,8 @@ $itemAbrir.Font = New-Object System.Drawing.Font($menu.Font, [System.Drawing.Fon
 $itemCelular = $menu.Items.Add("Copiar link do celular")
 $itemCode = $menu.Items.Add("Abrir no VS Code")
 $itemPasta = $menu.Items.Add("Abrir a pasta do projeto")
+$menu.Items.Add("-") | Out-Null
+$itemPublicar = $menu.Items.Add("Publicar a versão nova")
 $itemReiniciar = $menu.Items.Add("Reiniciar o servidor")
 $menu.Items.Add("-") | Out-Null
 $itemBackup = $menu.Items.Add("Fazer backup do banco")
@@ -399,6 +401,18 @@ $menu.Items.Add("-") | Out-Null
 $itemSair = $menu.Items.Add("Sair")
 
 $script:estado = "parado"
+
+# A janela do publicar.ps1 enquanto ela está aberta; o relógio espera ela sair.
+$script:publicando = $null
+# Liga quando o reinício veio de uma publicação, para avisar quando subir.
+$script:avisarPublicado = $false
+
+<# Reiniciar e publicar não fazem sentido no meio de outro dos dois. #>
+function Atualizar-Itens {
+    $livre = ($script:estado -ne "subindo") -and -not $script:publicando
+    $itemReiniciar.Enabled = $livre
+    $itemPublicar.Enabled  = $livre
+}
 
 <# O único lugar que muda estado, dica e ícone juntos. #>
 function Marcar([string]$novo) {
@@ -413,11 +427,13 @@ function Marcar([string]$novo) {
             $bandeja.Text = "Trimly — no ar. Clique duas vezes para abrir."
         }
         "parado" {
+            # Caiu no reinício da publicação: o aviso de erro já basta.
+            $script:avisarPublicado = $false
             $bandeja.Icon = $iconeParado
             $bandeja.Text = "Trimly — parado"
         }
     }
-    $itemReiniciar.Enabled = ($novo -ne "subindo")
+    Atualizar-Itens
 }
 
 <#
@@ -468,6 +484,22 @@ $itemCode.add_Click({
 # $RAIZ, e não um caminho escrito: é a pasta desta cópia, onde quer que ela esteja.
 $itemPasta.add_Click({
     Start-Process explorer.exe -ArgumentList "`"$RAIZ`""
+})
+
+<#
+    Publicar = conferir antes, reiniciar depois. As conferências rodam numa
+    janela visível com o servidor antigo ainda no ar; o reinício acontece no
+    relógio, quando a janela sai com 0. Ver scripts\publicar.ps1.
+#>
+$itemPublicar.add_Click({
+    $script:publicando = Start-Process powershell.exe -PassThru -ArgumentList @(
+        "-NoProfile", "-ExecutionPolicy", "Bypass",
+        "-File", "`"$(Join-Path $RAIZ 'scripts\publicar.ps1')`"", "-DaBandeja"
+    ) -WorkingDirectory $RAIZ
+    # No PowerShell 5.1 o ExitCode só fica legível se o handle foi aberto
+    # enquanto o processo vivia; pedir o Handle agora garante isso.
+    $null = $script:publicando.Handle
+    Atualizar-Itens
 })
 
 $itemReiniciar.add_Click({
@@ -521,11 +553,29 @@ $itemSair.add_Click({
 $relogio = New-Object System.Windows.Forms.Timer
 $relogio.Interval = 1000
 $relogio.add_Tick({
+    if ($script:publicando -and $script:publicando.HasExited) {
+        $codigo = $script:publicando.ExitCode
+        $script:publicando = $null
+        if ($codigo -eq 0) {
+            Parar-Servidor
+            $script:abrirAoSubir = $false
+            $script:avisarPublicado = $true
+            Iniciar-Servidor
+            return
+        }
+        Atualizar-Itens
+        Avisar "Publicação interrompida — a versão antiga segue no ar." "Warning"
+    }
+
     $ouvindo = Porta-Ouvindo
 
     if ($script:estado -eq "subindo") {
         if ($ouvindo) {
             Marcar "no-ar"
+            if ($script:avisarPublicado) {
+                $script:avisarPublicado = $false
+                Avisar "Versão nova no ar. No celular, feche e abra o app para pegá-la." "Info"
+            }
             if ($script:abrirAoSubir) {
                 Abrir-Navegador
                 $script:abrirAoSubir = $false
