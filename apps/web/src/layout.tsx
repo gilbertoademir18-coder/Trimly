@@ -14,9 +14,6 @@ export function Layout() {
           Trimly
         </Link>
         <nav className="flex gap-1 text-sm">
-          <ItemNav to="/" end>
-            Início
-          </ItemNav>
           <ItemNav to="/wl">WL</ItemNav>
         </nav>
       </header>
