@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { createBrowserRouter, Navigate, RouterProvider } from "react-router";
 import "./app.css";
 import { Layout } from "./layout.tsx";
+import { PaginaAcoes } from "./modulos/wl/acoes.tsx";
 import { PaginaWl } from "./modulos/wl/pagina.tsx";
 import { PaginaPeso } from "./modulos/wl/peso.tsx";
 
@@ -18,12 +19,12 @@ const roteador = createBrowserRouter([
       // `<Inicio />` (`paginas/inicio.tsx`) e o item "Início" volta ao menu.
       { index: true, element: <Navigate to="/wl" replace /> },
       { path: "wl", element: <PaginaWl /> },
-      // O peso é uma tela à parte; o cadastro de ações é uma modal dentro
-      // de /wl, porque mexer nele é uma pausa e não um destino.
+      // Peso e ações são telas à parte: as duas têm formulário, listas e
+      // histórico, e não cabiam numa janela sem virar rolagem dentro de
+      // rolagem. O cadastro de ações já foi modal daqui — voltou a ser tela
+      // quando cresceu (formulário, editor de opções e quatro listas).
       { path: "wl/peso", element: <PaginaPeso /> },
-      // /wl/acoes existiu por um tempo e virou modal. Quem tiver o endereço
-      // guardado cai em /wl em vez de numa tela de rota não encontrada.
-      { path: "wl/acoes", element: <Navigate to="/wl" replace /> },
+      { path: "wl/acoes", element: <PaginaAcoes /> },
       // /jejum chegou a existir como módulo próprio e virou um bloco do WL.
       { path: "jejum", element: <Navigate to="/wl" replace /> },
     ],

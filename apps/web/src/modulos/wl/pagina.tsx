@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router";
 import { Modal } from "../../modal.tsx";
-import { PainelAcoes } from "./acoes.tsx";
 import { wlApi } from "./api.ts";
 import { Aviso } from "./aviso.tsx";
 import { Calendario } from "./calendario.tsx";
@@ -11,7 +10,7 @@ import { PainelGrupos } from "./grupos.tsx";
 import { BlocoJejum, PainelJejum } from "./jejum.tsx";
 
 /** Qual janela está aberta, se alguma. */
-type Janela = "acoes" | "grupos" | "jejum" | null;
+type Janela = "grupos" | "jejum" | null;
 
 /**
  * A tela do dia a dia do WL: a nota de hoje, o que a forma e o mês inteiro
@@ -19,10 +18,10 @@ type Janela = "acoes" | "grupos" | "jejum" | null;
  *
  * O jejum abre a tela: enquanto um corre, o cronômetro é a informação viva.
  *
- * O peso tem tela própria — é outro ritmo, pesa-se uma vez de manhã. Os
- * O cadastro de ações e o histórico de jejuns são modais daqui mesmo:
- * mexer neles é uma pausa no meio de marcar o dia, e sair da página perderia a
- * rolagem do calendário.
+ * Peso e ações têm tela própria — outro ritmo (pesa-se uma vez de manhã) e
+ * conteúdo grande demais para uma janela. Grupos e o histórico de jejuns
+ * continuam modais daqui: são listas curtas, e mexer nelas é uma pausa no meio
+ * de marcar o dia.
  *
  * A lista de ações mora aqui porque o cartão do dia precisa dela — e uma ação
  * pode ter opções, que é o que antes era um cadastro de refeições à parte.
@@ -116,7 +115,7 @@ export function PaginaWl() {
         <nav className="order-last grid gap-3 sm:grid-cols-3 lg:order-none lg:grid-cols-1">
           <Atalho rota="/wl/peso" nome="Peso" descricao="Pesagens, meta, IMC e o gráfico." />
           <Atalho
-            aoTocar={() => setJanela("acoes")}
+            rota="/wl/acoes"
             nome="Ações"
             descricao="O que soma, o que desconta, e as que têm opções."
           />
@@ -134,15 +133,10 @@ export function PaginaWl() {
         grupos={grupos}
         versaoCadastro={versaoCadastro}
         aoMudar={() => setVersao((v) => v + 1)}
-        aoAbrirAcoes={() => setJanela("acoes")}
         aoAbrirGrupos={() => setJanela("grupos")}
       />
 
       <Calendario hoje={hoje} selecionado={diaAberto} versao={versao} aoSelecionar={setDiaAberto} />
-
-      <Modal aberto={janela === "acoes"} titulo="Ações" largura="larga" aoFechar={() => setJanela(null)}>
-        <PainelAcoes grupos={grupos} aoMudar={() => void aoMudarCadastro()} />
-      </Modal>
 
       <Modal
         aberto={janela === "grupos"}

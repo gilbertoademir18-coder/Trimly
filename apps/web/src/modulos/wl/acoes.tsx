@@ -1,34 +1,47 @@
 import { useCallback, useEffect, useState } from "react";
+import { Modal } from "../../modal.tsx";
 import { wlApi, type AcaoNova } from "./api.ts";
-import { Aviso } from "./aviso.tsx";
-import { opcoesAtivas, pontosPossiveis, temOpcoes, type Acao, type Grupo } from "./calculos.ts";
+import { Aviso, CabecalhoInterno } from "./aviso.tsx";
+import {
+  diaLocal,
+  opcoesAtivas,
+  pontosPossiveis,
+  temOpcoes,
+  type Acao,
+  type Grupo,
+} from "./calculos.ts";
 
 /**
- * O cadastro de ações do WL, para viver dentro de uma modal.
+ * O cadastro de ações do WL: a página é o catálogo, a modal é o ato de editar.
  *
- * Numa janela e não numa tela própria: mexer no cadastro é uma pausa no meio
- * de marcar o dia, não um destino — e fechar tem que devolver a pessoa
- * exatamente onde ela estava, com o calendário na mesma rolagem.
+ * A página veio primeiro, porque as quatro listas mais o resumo do dia perfeito
+ * não caíam numa janela de 85% da altura sem virar rolagem dentro de rolagem —
+ * o mesmo motivo que mandou o peso para uma tela à parte. O formulário, depois,
+ * voltou para uma janela: ele é um começo-e-fim (preencher, salvar, pronto), e
+ * fixo no topo da página empurrava as listas para baixo em troca de nada.
  *
- * O `aoMudar` avisa quem abriu que o catálogo mexeu, para a tela de trás
- * recarregar as ações e o total possível do dia.
- *
- * Os `grupos` vêm de fora porque é no painel deles que se mandam: aqui eles só
- * aparecem como botões para marcar em quais a ação entra.
+ * Carrega ações e grupos por conta própria, porque é um destino: entra-se aqui
+ * pelo endereço, e não só pelo atalho de `/wl`.
  */
-export function PainelAcoes({ grupos, aoMudar }: { grupos: Grupo[]; aoMudar?: () => void }) {
+export function PaginaAcoes() {
   const [acoes, setAcoes] = useState<Acao[] | null>(null);
+  const [grupos, setGrupos] = useState<Grupo[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
-  // `null` é o formulário em branco, que fica sempre à vista. Editar uma ação
-  // existente empresta o mesmo formulário e devolve em branco ao terminar.
-  const [editando, setEditando] = useState<Acao | null>(null);
-  // Só serve para trocar a `key` e remontar o formulário vazio depois de criar
-  // uma ação — assim dá para cadastrar várias seguidas sem limpar campo a campo.
-  const [criadas, setCriadas] = useState(0);
+  /*
+   * A janela do formulário: `null` é fechada, `{ acao: null }` é uma ação nova
+   * e `{ acao }` é a edição de uma existente.
+   *
+   * Um estado só, e não um par "aberta?" + "qual ação?": com dois, dava para
+   * escrever o par impossível (fechada com ação dentro, aberta sem nada) e a
+   * janela abriria vazia quando devia editar.
+   */
+  const [edicao, setEdicao] = useState<{ acao: Acao | null } | null>(null);
 
   const carregar = useCallback(async () => {
     try {
-      setAcoes(await wlApi.acoes());
+      const [a, g] = await Promise.all([wlApi.acoes(), wlApi.grupos()]);
+      setAcoes(a);
+      setGrupos(g);
       setErro(null);
     } catch (e) {
       setErro((e as Error).message);
@@ -39,19 +52,43 @@ export function PainelAcoes({ grupos, aoMudar }: { grupos: Grupo[]; aoMudar?: ()
     void carregar();
   }, [carregar]);
 
+  /*
+   * O cadastro mudou: o dia de hoje é reprecificado no servidor, porque ele
+   * ainda está sendo vivido — mudar quanto vale um hábito ao meio-dia vale para
+   * o dia inteiro. Os dias futuros já planejados vão junto (o servidor cuida
+   * disso). Os passados ficam como estão: eles só são reavaliados se você
+   * reabrir um deles e mexer.
+   *
+   * Isto morava em `pagina.tsx`, que era quem abria a modal. Agora que o
+   * cadastro é um destino, a reprecificação vem com ele: voltar para `/wl`
+   * remonta a tela do dia, que busca o dia já reprecificado.
+   */
+  const aoMudarCadastro = useCallback(async () => {
+    try {
+      await wlApi.refotografar(diaLocal());
+    } catch (e) {
+      setErro((e as Error).message);
+    }
+    await carregar();
+  }, [carregar]);
+
+  /** As linhas da lista só sabem qual ação editar; a janela é assunto daqui. */
+  function abrirEdicao(acao: Acao) {
+    setEdicao({ acao });
+  }
+
   async function mexer(acao: () => Promise<unknown>) {
     try {
       await acao();
-      await carregar();
+      await aoMudarCadastro();
       setErro(null);
-      aoMudar?.();
     } catch (e) {
       setErro((e as Error).message);
     }
   }
 
   if (erro && !acoes) return <Aviso texto={erro} />;
-  if (!acoes) return <p className="text-tinta-3">Carregando…</p>;
+  if (!acoes || !grupos) return <p className="text-tinta-3">Carregando…</p>;
 
   const ativas = acoes.filter((a) => a.ativa);
   const comOpcoes = ativas.filter(temOpcoes);
@@ -64,78 +101,130 @@ export function PainelAcoes({ grupos, aoMudar }: { grupos: Grupo[]; aoMudar?: ()
   const semGrupo = acoes.filter((a) => a.ativa && a.grupos.length === 0);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
+      <CabecalhoInterno titulo="Ações">
+        <button
+          type="button"
+          onClick={() => setEdicao({ acao: null })}
+          className="rounded-xl bg-destaque px-4 py-2 text-sm font-medium text-sobre-destaque"
+        >
+          Nova ação
+        </button>
+      </CabecalhoInterno>
       {erro && <Aviso texto={erro} />}
 
-      <section className="rounded-2xl border border-borda bg-superficie p-4">
-        <h3 className="text-sm font-medium">O dia perfeito de cada grupo</h3>
-        {gruposAtivos.length === 0 ? (
-          <p className="mt-1 text-xs text-tinta-3">Nenhum grupo ainda. Crie um no painel de grupos.</p>
-        ) : (
-          <ul className="mt-2 space-y-1">
-            {gruposAtivos.map((g) => (
-              <li key={g.id} className="flex items-baseline justify-between gap-2 text-sm">
-                <span className="min-w-0 truncate text-tinta-2">{g.nome}</span>
-                <span className="tabular font-medium">
-                  {pontosPossiveis(acoes.filter((a) => a.grupos.includes(g.id)))} pts
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-        <p className="mt-2 text-xs text-tinta-3">
-          Cada grupo tem o seu 100%: a soma das ações positivas dele, pelo alvo diário de cada uma,
-          mais a melhor opção das que têm opções. Mexer aqui vale de hoje em diante — a nota de hoje
-          é recalculada na hora, e os dias anteriores guardam o que as ações valiam na época.
-        </p>
-      </section>
+      {/*
+        No desktop, duas colunas: à esquerda a referência (o dia perfeito de
+        cada grupo, e quem está fora de grupo), à direita as listas, que são o
+        assunto da tela.
 
-      {semGrupo.length > 0 && (
-        <p className="rounded-xl border border-atencao px-3 py-2 text-xs text-atencao">
-          Fora de grupo, e por isso sem aparecer em dia nenhum: {semGrupo.map((a) => a.nome).join(", ")}.
-        </p>
-      )}
+        No celular, a pilha de sempre: a coluna da esquerda é `contents` ali, e o
+        resumo do dia perfeito desce para o fim com `order-last`, por ser
+        consulta e não tarefa.
+      */}
+      <div className="flex flex-col gap-5 lg:grid lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:items-start">
+        <div className="contents lg:flex lg:flex-col lg:gap-5">
+          {semGrupo.length > 0 && (
+            <p className="rounded-xl border border-atencao px-3 py-2 text-xs text-atencao">
+              Fora de grupo, e por isso sem aparecer em dia nenhum:{" "}
+              {semGrupo.map((a) => a.nome).join(", ")}.
+            </p>
+          )}
 
-      <FormAcao
-        // A key remonta o formulário ao trocar de ação e ao terminar um
-        // cadastro — mais simples que sincronizar estado com efeito, como no
-        // formulário de pesagem.
-        key={editando ? `acao-${editando.id}` : `nova-${criadas}`}
-        acao={editando}
-        grupos={gruposAtivos}
-        aoSalvar={async () => {
-          if (!editando) setCriadas((n) => n + 1);
-          setEditando(null);
-          await carregar();
-          aoMudar?.();
-        }}
-        // Não há o que cancelar no formulário em branco: ele é o estado de
-        // repouso da janela, e não algo que foi aberto.
-        aoCancelar={editando ? () => setEditando(null) : undefined}
-      />
+          <section className="order-last rounded-2xl border border-borda bg-superficie p-4 lg:order-none">
+            <h2 className="text-sm font-medium">O dia perfeito de cada grupo</h2>
+            {gruposAtivos.length === 0 ? (
+              <p className="mt-1 text-xs text-tinta-3">
+                Nenhum grupo ainda. Crie um no painel de grupos.
+              </p>
+            ) : (
+              <ul className="mt-2 space-y-1">
+                {gruposAtivos.map((g) => (
+                  <li key={g.id} className="flex items-baseline justify-between gap-2 text-sm">
+                    <span className="min-w-0 truncate text-tinta-2">{g.nome}</span>
+                    <span className="tabular font-medium">
+                      {pontosPossiveis(acoes.filter((a) => a.grupos.includes(g.id)))} pts
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p className="mt-2 text-xs text-tinta-3">
+              Cada grupo tem o seu 100%: a soma das ações positivas dele, pelo alvo diário de cada
+              uma, mais a melhor opção das que têm opções. Mexer aqui vale de hoje em diante — a nota
+              de hoje é recalculada na hora, e os dias anteriores guardam o que as ações valiam na
+              época.
+            </p>
+          </section>
+        </div>
 
-      <Grupo titulo="Com opções" vazio="" acoes={comOpcoes}>
-        {(a) => <Linha acao={a} aoEditar={setEditando} aoMexer={mexer} />}
-      </Grupo>
+        <div className="flex flex-col gap-5">
+          <Secao titulo="Com opções" vazio="" acoes={comOpcoes}>
+            {(a) => <Linha acao={a} aoEditar={abrirEdicao} aoMexer={mexer} />}
+          </Secao>
 
-      <Grupo titulo="Positivas" vazio="Nenhuma ainda. São elas que formam o dia perfeito." acoes={positivas}>
-        {(a) => <Linha acao={a} aoEditar={setEditando} aoMexer={mexer} />}
-      </Grupo>
+          <Secao
+            titulo="Positivas"
+            vazio="Nenhuma ainda. São elas que formam o dia perfeito."
+            acoes={positivas}
+          >
+            {(a) => <Linha acao={a} aoEditar={abrirEdicao} aoMexer={mexer} />}
+          </Secao>
 
-      <Grupo titulo="Negativas" vazio="Nenhuma ainda. Elas descontam da nota do dia." acoes={negativas}>
-        {(a) => <Linha acao={a} aoEditar={setEditando} aoMexer={mexer} />}
-      </Grupo>
+          <Secao
+            titulo="Negativas"
+            vazio="Nenhuma ainda. Elas descontam da nota do dia."
+            acoes={negativas}
+          >
+            {(a) => <Linha acao={a} aoEditar={abrirEdicao} aoMexer={mexer} />}
+          </Secao>
 
-      {arquivadas.length > 0 && (
-        <Grupo titulo="Arquivadas" vazio="" acoes={arquivadas}>
-          {(a) => <Linha acao={a} aoEditar={setEditando} aoMexer={mexer} />}
-        </Grupo>
-      )}
+          {arquivadas.length > 0 && (
+            <Secao titulo="Arquivadas" vazio="" acoes={arquivadas}>
+              {(a) => <Linha acao={a} aoEditar={abrirEdicao} aoMexer={mexer} />}
+            </Secao>
+          )}
+        </div>
+      </div>
+
+      {/*
+        O título da janela já diz se é cadastro ou edição — por isso o
+        formulário não repete um cabeçalho dentro.
+
+        A largura `normal` (32rem) e não `larga`: o formulário é de uma coluna
+        só, e a 48rem os campos ficariam com meio palmo de largura cada.
+
+        O conteúdo é desmontado ao fechar (quem cuida disso é a `Modal`), então
+        toda abertura começa limpa — é o que dispensa zerar campo a campo depois
+        de salvar.
+      */}
+      <Modal
+        aberto={edicao !== null}
+        titulo={edicao?.acao ? "Editar ação" : "Nova ação"}
+        aoFechar={() => setEdicao(null)}
+      >
+        <FormAcao
+          acao={edicao?.acao ?? null}
+          grupos={gruposAtivos}
+          aoSalvar={async () => {
+            setEdicao(null);
+            await aoMudarCadastro();
+          }}
+          aoCancelar={() => setEdicao(null)}
+        />
+      </Modal>
     </div>
   );
 }
 
-function Grupo({
+/**
+ * Uma das listas de ações.
+ *
+ * `Secao` e não `Grupo`: grupo neste módulo é o tipo de dia (trabalho, fim de
+ * semana, viagem), e ter as duas coisas com o mesmo nome num arquivo que lida
+ * com as duas era pedir confusão.
+ */
+function Secao({
   titulo,
   vazio,
   acoes,
@@ -146,13 +235,13 @@ function Grupo({
   acoes: Acao[];
   children: (a: Acao) => React.ReactNode;
 }) {
-  // Grupo sem itens e sem texto de vazio não vira seção: é o caso de "Com
-  // opções" e "Arquivadas", que só aparecem quando têm o que mostrar.
+  // Seção sem itens e sem texto de vazio não aparece: é o caso de "Com opções"
+  // e "Arquivadas", que só existem quando têm o que mostrar.
   if (acoes.length === 0 && vazio === "") return null;
 
   return (
     <section className="rounded-2xl border border-borda bg-superficie">
-      <h3 className="px-4 pt-4 pb-2 font-medium">{titulo}</h3>
+      <h2 className="px-4 pt-4 pb-2 font-medium">{titulo}</h2>
       {acoes.length === 0 ? (
         <p className="px-4 pb-4 text-sm text-tinta-3">{vazio}</p>
       ) : (
@@ -390,18 +479,16 @@ function FormAcao({
   }
 
   return (
-    <form
-      onSubmit={enviar}
-      className={"rounded-2xl border bg-superficie p-4 " + (acao ? "border-destaque" : "border-borda")}
-    >
-      <h3 className="mb-3 font-medium">{acao ? "Editar ação" : "Nova ação"}</h3>
-
+    // Sem moldura nem título próprios: a janela que o abriga já tem as duas, e
+    // repeti-las dava caixa dentro de caixa com "Nova ação" escrito duas vezes.
+    <form onSubmit={enviar}>
       {/*
-        Duas colunas a partir do tablet, uma só no celular: à esquerda o que a
-        ação é, à direita quanto ela vale. Fixar duas colunas espremeria os
-        campos justamente na tela em que o app mais é usado.
+        Uma coluna só, do celular ao desktop. O `sm:grid-cols-2` que havia aqui
+        era uma armadilha: o `sm:` do Tailwind olha a largura da JANELA, não a
+        do contêiner — dentro de uma modal de 32rem ele valia do mesmo jeito e
+        espremia os campos em 240px cada.
       */}
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4">
         <div className="space-y-3">
           <label className="block">
             <span className="mb-1 block text-sm text-tinta-2">Nome</span>
@@ -410,7 +497,10 @@ function FormAcao({
               onChange={(e) => setNome(e.target.value)}
               placeholder={usaOpcoes ? "Refeição principal" : "Beber 1 copo de água"}
               maxLength={80}
-              autoFocus={!!acao}
+              // Sempre, e não só na edição: sem um `autofocus` à vista o
+              // `showModal()` entrega o foco ao primeiro focável, que é o × de
+              // fechar — e começar com o dedo no botão de desistir é estranho.
+              autoFocus
               className="w-full rounded-xl border border-borda bg-fundo px-3 py-2.5 outline-none focus:border-destaque"
             />
           </label>
@@ -427,42 +517,6 @@ function FormAcao({
             />
             Tem opções (escolho uma por dia)
           </label>
-
-          <div>
-            <span className="mb-1 block text-sm text-tinta-2">Aparece nos grupos</span>
-            {grupos.length === 0 ? (
-              <p className="text-xs text-tinta-3">Nenhum grupo cadastrado ainda.</p>
-            ) : (
-              <div className="flex flex-wrap gap-1">
-                {grupos.map((g) => (
-                  <button
-                    key={g.id}
-                    type="button"
-                    onClick={() => alternarGrupo(g.id)}
-                    aria-pressed={emGrupos.includes(g.id)}
-                    className={
-                      "rounded-lg px-2.5 py-1.5 text-sm font-medium " +
-                      (emGrupos.includes(g.id)
-                        ? "bg-destaque text-sobre-destaque"
-                        : "border border-borda text-tinta-2")
-                    }
-                  >
-                    {g.nome}
-                  </button>
-                ))}
-              </div>
-            )}
-            {/*
-              No formulário em branco o aviso espera o nome: ele fica sempre à
-              vista, e reclamar de grupo antes de existir ação só parecia que a
-              ação recém-editada tinha perdido os dela.
-            */}
-            {emGrupos.length === 0 && grupos.length > 0 && (acao || nome.trim()) && (
-              <span className="mt-1 block text-xs text-atencao">
-                Sem grupo, a ação não aparece em dia nenhum.
-              </span>
-            )}
-          </div>
         </div>
 
         <div className="space-y-3">
@@ -527,6 +581,47 @@ function FormAcao({
                 </label>
               )}
             </>
+          )}
+        </div>
+
+        {/*
+          Por último, e não entre o "Tem opções" e os pontos como era na modal:
+          ali o interruptor ficava longe do campo que ele liga, e ninguém ligava
+          um ao outro. Escolher os grupos é o passo final de cadastrar uma ação.
+        */}
+        <div>
+          <span className="mb-1 block text-sm text-tinta-2">Aparece nos grupos</span>
+          {grupos.length === 0 ? (
+            <p className="text-xs text-tinta-3">Nenhum grupo cadastrado ainda.</p>
+          ) : (
+            <div className="flex flex-wrap gap-1">
+              {grupos.map((g) => (
+                <button
+                  key={g.id}
+                  type="button"
+                  onClick={() => alternarGrupo(g.id)}
+                  aria-pressed={emGrupos.includes(g.id)}
+                  className={
+                    "rounded-lg px-2.5 py-1.5 text-sm font-medium " +
+                    (emGrupos.includes(g.id)
+                      ? "bg-destaque text-sobre-destaque"
+                      : "border border-borda text-tinta-2")
+                  }
+                >
+                  {g.nome}
+                </button>
+              ))}
+            </div>
+          )}
+          {/*
+            No formulário em branco o aviso espera o nome: ele fica sempre à
+            vista, e reclamar de grupo antes de existir ação só parecia que a
+            ação recém-editada tinha perdido os dela.
+          */}
+          {emGrupos.length === 0 && grupos.length > 0 && (acao || nome.trim()) && (
+            <span className="mt-1 block text-xs text-atencao">
+              Sem grupo, a ação não aparece em dia nenhum.
+            </span>
           )}
         </div>
       </div>

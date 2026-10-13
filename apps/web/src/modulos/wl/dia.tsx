@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router";
 import { wlApi } from "./api.ts";
 import {
   acharGrupo,
@@ -32,7 +33,6 @@ export function CartaoDoDia({
   grupos,
   versaoCadastro,
   aoMudar,
-  aoAbrirAcoes,
   aoAbrirGrupos,
 }: {
   dia: string;
@@ -41,7 +41,10 @@ export function CartaoDoDia({
   /** Sobe quando o cadastro muda, para o dia ser rebuscado já reprecificado. */
   versaoCadastro: number;
   aoMudar?: () => void;
-  aoAbrirAcoes: () => void;
+  /*
+   * As ações saíram daqui: viraram tela (`/wl/acoes`) e os caminhos para elas
+   * são `Link`. Grupos segue modal, e por isso segue como função.
+   */
   aoAbrirGrupos: () => void;
 }) {
   const [estado, setEstado] = useState<Dia | null>(null);
@@ -135,13 +138,12 @@ export function CartaoDoDia({
             ? "Escolha o grupo deste dia para ver as ações."
             : "Nenhuma ação neste grupo ainda."}
         </p>
-        <button
-          type="button"
-          onClick={aoAbrirAcoes}
-          className="mt-3 rounded-xl bg-destaque px-4 py-2 text-sm font-medium text-sobre-destaque"
+        <Link
+          to="/wl/acoes"
+          className="mt-3 inline-block rounded-xl bg-destaque px-4 py-2 text-sm font-medium text-sobre-destaque"
         >
           Cadastrar ações
-        </button>
+        </Link>
       </Cartao>
     );
   }
@@ -207,9 +209,9 @@ export function CartaoDoDia({
       </ul>
 
       <div className="mt-3 flex gap-4">
-        <button type="button" onClick={aoAbrirAcoes} className="text-sm text-tinta-2 hover:text-tinta">
+        <Link to="/wl/acoes" className="text-sm text-tinta-2 hover:text-tinta">
           Gerenciar ações
-        </button>
+        </Link>
         <button type="button" onClick={aoAbrirGrupos} className="text-sm text-tinta-2 hover:text-tinta">
           Grupos
         </button>
