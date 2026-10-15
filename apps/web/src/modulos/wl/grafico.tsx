@@ -34,7 +34,9 @@ export function GraficoPeso({ pesagens, pesoAlvo }: { pesagens: Pesagem[]; pesoA
     return <p className="py-10 text-center text-sm text-tinta-3">Nenhuma pesagem neste período.</p>;
   }
 
-  const tempos = pesagens.map((p) => Date.parse(p.data));
+  // Pelo instante e não pelo dia: com várias pesagens no mesmo dia, o dia
+  // daria o mesmo x para todas e elas empilhariam numa coluna só.
+  const tempos = pesagens.map((p) => Date.parse(p.medidoEm));
   const t0 = tempos[0]!;
   const t1 = tempos.at(-1)!;
   const pesos = pesagens.map((p) => p.pesoKg);
@@ -78,7 +80,7 @@ export function GraficoPeso({ pesagens, pesoAlvo }: { pesagens: Pesagem[]; pesoA
           onPointerDown={aoMover}
           onPointerLeave={() => setFoco(null)}
           role="img"
-          aria-label={`Peso de ${formatarDia(pesagens[0]!.data, true)} a ${formatarDia(pesagens[ultimo]!.data, true)}`}
+          aria-label={`Peso de ${formatarDia(pesagens[0]!.dia, true)} a ${formatarDia(pesagens[ultimo]!.dia, true)}`}
         >
           {marcas.map((m) => (
             <g key={m}>
@@ -106,7 +108,7 @@ export function GraficoPeso({ pesagens, pesoAlvo }: { pesagens: Pesagem[]; pesoA
               textAnchor={i === 0 && rotulosX.length > 1 ? "start" : "end"}
               className="tabular fill-tinta-3 text-[11px]"
             >
-              {formatarDia(pesagens[i]!.data)}
+              {formatarDia(pesagens[i]!.dia)}
             </text>
           ))}
 
@@ -129,7 +131,7 @@ export function GraficoPeso({ pesagens, pesoAlvo }: { pesagens: Pesagem[]; pesoA
           }}
         >
           <div className="tabular text-sm font-semibold">{formatarPeso(pd.pesoKg)} kg</div>
-          <div className="text-tinta-2">{formatarDia(pd.data, true)}</div>
+          <div className="text-tinta-2">{formatarDia(pd.dia, true)}</div>
         </div>
       )}
     </div>

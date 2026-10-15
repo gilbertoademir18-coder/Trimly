@@ -47,10 +47,26 @@ const umaOpcao = (pontos: number, ativa = true): Opcao => ({
   ordem: 0,
 });
 
-// `padronizada` entra com o padrão do caso normal, para os testes que não se
-// interessam por ela não precisarem repeti-la em cada linha.
-const p = (data: string, pesoKg: number, padronizada = true): Pesagem => ({
-  data,
+/*
+ * Uma pesagem de mentira a partir do dia.
+ *
+ * O id vem de um contador e o instante, do meio-dia do próprio dia — os dois
+ * derivados para quem chama escrever só `p("2026-09-05", 86)`. Nem a hora nem
+ * o id interessam a quase nenhum destes testes, e repeti-los em cada linha
+ * esconderia o que cada caso prova. Quem precisa de hora passa `hora`.
+ *
+ * Meio-dia e não meia-noite: em fuso negativo, meia-noite local cai no dia
+ * anterior em UTC, e um teste passaria ou falharia conforme a máquina.
+ */
+let proximoId = 1;
+const p = (
+  dia: string,
+  pesoKg: number,
+  { padronizada = true, hora = "12:00" } = {},
+): Pesagem => ({
+  id: proximoId++,
+  dia,
+  medidoEm: new Date(`${dia}T${hora}`).toISOString(),
   pesoKg,
   padronizada,
   nota: null,
@@ -120,8 +136,50 @@ describe("filtrarPeriodo", () => {
   const serie = [p("2026-06-01", 90), p("2026-09-05", 86), p("2026-09-30", 85)];
 
   it("corta pelos últimos N dias a partir de hoje", () => {
-    expect(filtrarPeriodo(serie, "30d", "2026-09-30").map((x) => x.data)).toEqual(["2026-09-05", "2026-09-30"]);
+    expect(filtrarPeriodo(serie, "30d", "2026-09-30").map((x) => x.dia)).toEqual(["2026-09-05", "2026-09-30"]);
     expect(filtrarPeriodo(serie, "tudo", "2026-09-30")).toHaveLength(3);
+  });
+});
+
+describe("várias pesagens no mesmo dia", () => {
+  /*
+   * O caso que o modelo passou a permitir: pesar de manhã e de novo à noite.
+   *
+   * A API devolve em ordem de instante crescente, e é dessa ordem que
+   * `resumir` tira a inicial (a primeira) e o peso atual (a última). Com duas
+   * no mesmo dia, isso tem de continuar valendo DENTRO do dia — era aqui que
+   * uma ordenação por dia só daria empate e o "atual" sairia ao sabor da sorte.
+   */
+  const doisNoDia = [
+    p("2026-06-01", 90, { hora: "06:00" }),
+    p("2026-09-30", 85, { hora: "06:30" }),
+    p("2026-09-30", 86.4, { hora: "21:00" }),
+  ];
+
+  it("o peso atual é a última pesagem no tempo, não a primeira do dia", () => {
+    const r = resumir(doisNoDia, null)!;
+    expect(r.atual.pesoKg).toBe(86.4);
+    expect(r.atual.medidoEm).toBe(doisNoDia[2]!.medidoEm);
+  });
+
+  it("a variação conta da primeira à última, atravessando o dia repetido", () => {
+    expect(resumir(doisNoDia, null)!.variacao).toBeCloseTo(-3.6, 10);
+  });
+
+  it("o filtro de período leva as duas do mesmo dia ou nenhuma", () => {
+    // O recorte é por dia: duas pesagens do mesmo dia nunca se separam, porque
+    // é o `dia` que entra na comparação e ele é igual nas duas.
+    const trinta = filtrarPeriodo(doisNoDia, "30d", "2026-09-30");
+    expect(trinta).toHaveLength(2);
+    expect(trinta.map((x) => x.dia)).toEqual(["2026-09-30", "2026-09-30"]);
+  });
+
+  it("uma pesagem tardia não muda o dia a que ela pertence", () => {
+    // 22h em fuso negativo já é o dia seguinte em UTC. O `dia` é guardado à
+    // parte justamente para não depender disso.
+    const tardia = p("2026-09-30", 85, { hora: "22:30" });
+    expect(tardia.dia).toBe("2026-09-30");
+    expect(filtrarPeriodo([tardia], "30d", "2026-09-30")).toHaveLength(1);
   });
 });
 

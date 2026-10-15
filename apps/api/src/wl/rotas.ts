@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { Prisma } from "../generated/prisma/client.ts";
 import { dateParaDia } from "../lib/datas.ts";
 import { prisma } from "../lib/prisma.ts";
-import { Dia, primeiroErro } from "../lib/validacao.ts";
+import { Dia, Instante, primeiroErro } from "../lib/validacao.ts";
 
 /**
  * Rotas do módulo WL, montadas em `/api/wl`.
@@ -21,6 +21,16 @@ const Peso = z
   .max(400, "acima de 400 kg — erro de digitação?");
 
 const CorpoPesagem = z.object({
+  /*
+   * O dia e o instante, os dois mandados pelo cliente.
+   *
+   * O dia não é derivado do instante aqui porque o servidor roda em UTC:
+   * uma pesagem às 22h de Brasília cairia no dia seguinte. É a mesma razão
+   * pela qual o jejum manda `dia` e `inicio` separados — o relógio de quem
+   * pesou é a verdade.
+   */
+  dia: Dia,
+  medidoEm: Instante,
   pesoKg: Peso,
   /*
    * Pesagem nas condições de sempre: de manhã, depois do banheiro, sem ter
@@ -49,7 +59,9 @@ const CorpoMeta = z.object({
 });
 
 type LinhaPesagem = {
-  data: Date;
+  id: number;
+  dia: Date;
+  medidoEm: Date;
   pesoKg: { toNumber(): number };
   padronizada: boolean;
   nota: string | null;
@@ -57,7 +69,9 @@ type LinhaPesagem = {
 type LinhaMeta = { pesoAlvo: { toNumber(): number }; alturaCm: number | null };
 
 const pesagemParaJson = (p: LinhaPesagem) => ({
-  data: dateParaDia(p.data),
+  id: p.id,
+  dia: dateParaDia(p.dia),
+  medidoEm: p.medidoEm.toISOString(),
   pesoKg: p.pesoKg.toNumber(),
   padronizada: p.padronizada,
   nota: p.nota,
@@ -457,37 +471,58 @@ async function lerDia(data: Date) {
 }
 
 export async function rotasWl(app: FastifyInstance) {
+  /*
+   * Em ordem de instante, crescente: é o que a tela espera — a primeira
+   * pesagem é a inicial do resumo e a última é o "peso atual".
+   */
   app.get("/pesagens", async () => {
-    const pesagens = await prisma.wlPesagem.findMany({ orderBy: { data: "asc" } });
+    const pesagens = await prisma.wlPesagem.findMany({ orderBy: { medidoEm: "asc" } });
     return pesagens.map(pesagemParaJson);
   });
 
-  // PUT pelo dia, e não POST: pesar de novo no mesmo dia corrige a pesagem
-  // em vez de duplicar. Repetir a requisição (rede ruim no celular) é seguro.
-  app.put<{ Params: { dia: string } }>("/pesagens/:dia", async (req, reply) => {
-    const dia = Dia.safeParse(req.params.dia);
-    if (!dia.success) return reply.code(400).send({ erro: primeiroErro(dia.error) });
+  /*
+   * POST e não mais PUT pelo dia.
+   *
+   * Enquanto a chave era o dia, cadastrar virava upsert: lançar uma pesagem
+   * num dia que já tinha uma substituía a antiga sem avisar — foi assim que
+   * uma pesagem real da manhã se perdeu para um registro de teste. Agora cada
+   * pesagem é uma linha com id próprio, e duas no mesmo dia são duas.
+   *
+   * O preço é que repetir a requisição (rede ruim no celular) cria duas
+   * pesagens em vez de ser inofensivo. É um preço aceitável: duas iguais se
+   * veem na hora, na lista, e apagar uma é um clique — enquanto o dado
+   * sobrescrito não tinha volta.
+   */
+  app.post("/pesagens", async (req, reply) => {
     const corpo = CorpoPesagem.safeParse(req.body);
     if (!corpo.success) return reply.code(400).send({ erro: primeiroErro(corpo.error) });
 
-    const pesagem = await prisma.wlPesagem.upsert({
-      where: { data: dia.data },
-      create: { data: dia.data, ...corpo.data },
-      update: corpo.data,
-    });
+    const pesagem = await prisma.wlPesagem.create({ data: corpo.data });
+    return reply.code(201).send(pesagemParaJson(pesagem));
+  });
+
+  app.put<{ Params: { id: string } }>("/pesagens/:id", async (req, reply) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id < 1) return reply.code(400).send({ erro: "Id inválido." });
+    const corpo = CorpoPesagem.safeParse(req.body);
+    if (!corpo.success) return reply.code(400).send({ erro: primeiroErro(corpo.error) });
+
+    const existe = await prisma.wlPesagem.findUnique({ where: { id } });
+    if (!existe) return reply.code(404).send({ erro: "Pesagem não encontrada." });
+
+    const pesagem = await prisma.wlPesagem.update({ where: { id }, data: corpo.data });
     return pesagemParaJson(pesagem);
   });
 
-  app.delete<{ Params: { dia: string } }>("/pesagens/:dia", async (req, reply) => {
-    const dia = Dia.safeParse(req.params.dia);
-    if (!dia.success) return reply.code(400).send({ erro: primeiroErro(dia.error) });
+  app.delete<{ Params: { id: string } }>("/pesagens/:id", async (req, reply) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id < 1) return reply.code(400).send({ erro: "Id inválido." });
 
     // deleteMany em vez de delete: apagar o que já não existe é sucesso, não
-    // erro — o resultado desejado ("não há pesagem neste dia") foi atingido.
-    await prisma.wlPesagem.deleteMany({ where: { data: dia.data } });
+    // erro — o resultado desejado ("esta pesagem não está mais lá") foi atingido.
+    await prisma.wlPesagem.deleteMany({ where: { id } });
     return reply.code(204).send();
   });
-
   app.get("/meta", async () => {
     const meta = await prisma.wlMeta.findUnique({ where: { id: 1 } });
     return meta ? metaParaJson(meta) : null;
@@ -784,9 +819,9 @@ export async function rotasWl(app: FastifyInstance) {
   });
 
   /*
-   * Marcar, corrigir e desmarcar são a mesma requisição: PUT da quantidade,
-   * pela mesma razão do PUT das pesagens — repetir com rede ruim no celular é
-   * seguro. Quantidade 0 apaga o registro.
+   * Marcar, corrigir e desmarcar são a mesma requisição: PUT da quantidade.
+   * Repetir com rede ruim no celular é seguro, porque o alvo é o par dia+ação
+   * e não uma linha nova a cada chamada. Quantidade 0 apaga o registro.
    */
   app.put<{ Params: { dia: string; acaoId: string } }>("/dias/:dia/acoes/:acaoId", async (req, reply) => {
     const dia = Dia.safeParse(req.params.dia);

@@ -13,6 +13,9 @@ export type AcaoNova = Omit<Acao, "id" | "opcoes"> & {
   opcoes: { id?: number; nome: string; pontos: number; ativa: boolean }[];
 };
 
+/** O que o formulário de pesagem manda: tudo menos o id, que é do banco. */
+export type PesagemNova = Omit<Pesagem, "id">;
+
 /** O que o formulário de jejum manda. Instantes em ISO; o dia, em `AAAA-MM-DD`. */
 export type JejumNovo = Omit<Jejum, "id">;
 
@@ -22,13 +25,17 @@ export type GrupoNovo = Omit<Grupo, "id">;
 export const wlApi = {
   pesagens: () => api<Pesagem[]>("/wl/pesagens"),
   /**
-   * O dia vai no caminho, porque é a identidade do registro; o resto, num
-   * objeto. Posicional, o `padronizada` seria um quarto booleano solto na
-   * chamada, do tipo que ninguém lê sem voltar até aqui.
+   * Criar e editar são rotas separadas, e as duas pelo id.
+   *
+   * Antes havia um `PUT /pesagens/:dia` só, que fazia upsert: cadastrar num
+   * dia que já tinha pesagem substituía a antiga em silêncio. Agora cada
+   * pesagem tem id próprio e um cadastro novo nunca apaga nada.
    */
-  salvarPesagem: (dia: string, dados: Omit<Pesagem, "data">) =>
-    api<Pesagem>(`/wl/pesagens/${dia}`, { method: "PUT", corpo: dados }),
-  apagarPesagem: (dia: string) => api<void>(`/wl/pesagens/${dia}`, { method: "DELETE" }),
+  criarPesagem: (dados: PesagemNova) =>
+    api<Pesagem>("/wl/pesagens", { method: "POST", corpo: dados }),
+  salvarPesagem: (id: number, dados: PesagemNova) =>
+    api<Pesagem>(`/wl/pesagens/${id}`, { method: "PUT", corpo: dados }),
+  apagarPesagem: (id: number) => api<void>(`/wl/pesagens/${id}`, { method: "DELETE" }),
   meta: () => api<Meta | null>("/wl/meta"),
   salvarMeta: (meta: Meta) => api<Meta>("/wl/meta", { method: "PUT", corpo: meta }),
 

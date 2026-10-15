@@ -6,6 +6,11 @@
 /**
  * Uma pesagem.
  *
+ * `dia` é o dia do calendário (`AAAA-MM-DD`) e `medidoEm` é o instante ISO.
+ * Os dois, e não só o instante, porque é o `dia` que o calendário e os
+ * filtros de período recortam — e derivar o dia de um instante depende do
+ * fuso de quem olha. Dentro de um mesmo dia, o `medidoEm` é quem ordena.
+ *
  * `padronizada` diz que ela foi feita nas condições de sempre: de manhã,
  * depois do banheiro, sem ter comido, sem roupa e na mesma balança. É o que
  * separa os números que comparam entre si dos que só registram — uma pesagem
@@ -13,7 +18,9 @@
  * mudado no corpo.
  */
 export type Pesagem = {
-  data: string;
+  id: number;
+  dia: string;
+  medidoEm: string;
   pesoKg: number;
   padronizada: boolean;
   nota: string | null;
@@ -137,7 +144,7 @@ export function filtrarPeriodo(pesagens: Pesagem[], periodo: Periodo, hoje: stri
   corte.setUTCDate(corte.getUTCDate() - dias);
   const inicio = corte.toISOString().slice(0, 10);
   // Comparar `AAAA-MM-DD` como texto funciona: a ordem alfabética é a cronológica.
-  return pesagens.filter((p) => p.data >= inicio);
+  return pesagens.filter((p) => p.dia >= inicio);
 }
 
 /**

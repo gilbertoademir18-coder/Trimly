@@ -24,8 +24,8 @@ import {
  * A nota de um dia e o que a forma: as ações marcadas.
  *
  * Cada toque é um PUT que devolve o dia inteiro: a nota se atualiza sem uma
- * segunda viagem, e repetir a requisição com rede ruim é seguro — a mesma
- * decisão do PUT das pesagens.
+ * segunda viagem, e repetir a requisição com rede ruim é seguro, porque o
+ * alvo é o par dia+ação e não uma linha nova a cada chamada.
  */
 export function CartaoDoDia({
   dia,

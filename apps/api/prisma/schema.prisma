@@ -13,12 +13,27 @@ datasource db {
   provider = "postgresql"
 }
 
-/// Uma pesagem. No máximo uma por dia: pesar de novo no mesmo dia corrige a
-/// anterior em vez de criar ruído no gráfico.
+/// Uma pesagem.
+///
+/// Várias por dia são permitidas: pesar de manhã e de novo à noite são dois
+/// fatos, e um deles não corrige o outro. O que diz quais números comparam
+/// entre si é `padronizada`, não a contagem por dia.
 model WlPesagem {
-  /// O dia da pesagem, como dia do calendário (DATE, sem hora nem fuso).
-  data        DateTime @id @db.Date
-  pesoKg      Decimal  @map("peso_kg") @db.Decimal(5, 2)
+  id Int @id @default(autoincrement())
+
+  /// O dia do calendário a que a pesagem pertence, como quem pesou enxerga.
+  ///
+  /// Guardado à parte do instante, e não derivado dele, pelo mesmo motivo do
+  /// `dia` do jejum: o banco roda em UTC, então deduzir o dia a partir do
+  /// timestamp exigiria conhecer o fuso de quem olha. Uma pesagem às 22h de
+  /// Brasília cairia no dia seguinte.
+  dia DateTime @db.Date
+
+  /// O instante da pesagem. É ele que ordena as várias de um mesmo dia.
+  medidoEm DateTime @map("medido_em") @db.Timestamptz
+
+  pesoKg Decimal @map("peso_kg") @db.Decimal(5, 2)
+
   /// Pesagem feita nas condições de sempre: de manhã, depois do banheiro, sem
   /// ter comido, sem roupa e na mesma balança.
   ///
@@ -28,11 +43,16 @@ model WlPesagem {
   ///
   /// Padrão `true` porque é o caso normal, o mesmo que o formulário assume:
   /// desmarca-se na exceção.
-  padronizada Boolean  @default(true)
-  nota        String?
-  criadoEm    DateTime @default(now()) @map("criado_em") @db.Timestamptz
-  editadoEm   DateTime @updatedAt @map("editado_em") @db.Timestamptz
+  padronizada Boolean @default(true)
 
+  nota      String?
+  criadoEm  DateTime @default(now()) @map("criado_em") @db.Timestamptz
+  editadoEm DateTime @updatedAt @map("editado_em") @db.Timestamptz
+
+  // Por `medidoEm` porque é a ordem em que a lista e o gráfico sempre pedem;
+  // por `dia` porque o calendário e os filtros de período recortam por ele.
+  @@index([medidoEm])
+  @@index([dia])
   @@map("wl_pesagem")
 }
 

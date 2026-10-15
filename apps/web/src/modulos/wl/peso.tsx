@@ -4,11 +4,14 @@ import { wlApi } from "./api.ts";
 import { Aviso, CabecalhoInterno } from "./aviso.tsx";
 import {
   diaLocal,
+  doCampoLocal,
   filtrarPeriodo,
   formatarDia,
   formatarPeso,
   formatarVariacao,
+  formatarHora,
   lerPeso,
+  paraCampoLocal,
   resumir,
   type Meta,
   type Periodo,
@@ -82,11 +85,11 @@ export function PaginaPeso() {
           {resumo ? (
             <>
               <section className="grid grid-cols-2 gap-3">
-                <Numero rotulo="Peso atual" valor={`${formatarPeso(resumo.atual.pesoKg)} kg`} detalhe={`em ${formatarDia(resumo.atual.data)}`} grande />
+                <Numero rotulo="Peso atual" valor={`${formatarPeso(resumo.atual.pesoKg)} kg`} detalhe={`em ${formatarDia(resumo.atual.dia)}`} grande />
                 <Numero
                   rotulo="Desde o início"
                   valor={`${formatarVariacao(resumo.variacao)} kg`}
-                  detalhe={`desde ${formatarDia(resumo.inicial.data, true)}`}
+                  detalhe={`desde ${formatarDia(resumo.inicial.dia, true)}`}
                 />
                 {resumo.faltam !== null && (
                   <Numero
@@ -158,7 +161,7 @@ export function PaginaPeso() {
         aberto={edicao !== null}
         titulo={
           edicao?.pesagem
-            ? `Editar pesagem de ${formatarDia(edicao.pesagem.data, true)}`
+            ? `Editar pesagem de ${formatarDia(edicao.pesagem.dia, true)} às ${formatarHora(edicao.pesagem.medidoEm)}`
             : "Registrar peso"
         }
         aoFechar={() => setEdicao(null)}
@@ -180,22 +183,18 @@ export function PaginaPeso() {
 /**
  * O formulário de uma pesagem, dentro da janela.
  *
- * Dois feitios, e quem separa é `pesagem`:
+ * Dois feitios, e quem separa é `pesagem`: `null` é registro novo (POST),
+ * uma pesagem é a correção dela (PUT no id).
  *
- *   `null`       registro novo. O dia começa em hoje e pode ser mudado, que é
- *                como se lança a pesagem de ontem que ficou esquecida.
- *   uma pesagem  correção de uma que já existe. O dia fica travado.
+ * Nada fica travado nos dois casos — nem o dia, nem a hora. O dia deixou de
+ * ser a identidade do registro quando o id chegou, então mudá-lo agora move a
+ * pesagem de verdade, em vez de criar outra e deixar a antiga para trás.
  *
- * O dia travado na correção porque ele é a identidade do registro: a API grava
- * por dia (`PUT /wl/pesagens/:dia`), então mudá-lo não moveria a pesagem de
- * lugar — gravaria outra e deixaria a antiga onde estava. Para trocar o dia, o
- * caminho é apagar e registrar de novo.
- *
- * O feitio híbrido que havia aqui — preenchido com a pesagem de hoje mas com o
- * dia livre — saiu de propósito: numa janela ele era armadilha. Via-se 72,5
- * preenchido, trocava-se o dia para ontem e o número de hoje ia para o dia
- * errado. Quem quer corrigir hoje clica em "Editar" na primeira linha do
- * histórico, onde o dia vem travado no dia certo.
+ * O campo é um `datetime-local` só, e não dia e hora separados: a hora é o
+ * que ordena as várias pesagens de um mesmo dia, então ela é parte do mesmo
+ * dado, não um extra. Começa em "agora", que é o caso de quem acabou de subir
+ * na balança; mexer nela é o caminho para lançar a pesagem de ontem que ficou
+ * esquecida.
  */
 function FormPesagem({
   pesagem,
@@ -209,7 +208,14 @@ function FormPesagem({
   aoSalvar: () => Promise<void>;
   aoCancelar: () => void;
 }) {
-  const [dia, setDia] = useState(pesagem?.data ?? hoje);
+  /*
+   * O instante vive no feitio do campo ("2026-10-15T06:13", hora local) e só
+   * virá ISO na hora de enviar. Guardar ISO aqui obrigaria a converter nos dois
+   * sentidos a cada tecla, e é nessa ida e volta que o fuso se perde.
+   */
+  const [quando, setQuando] = useState(() =>
+    paraCampoLocal(pesagem?.medidoEm ?? new Date().toISOString()),
+  );
   const [peso, setPeso] = useState(pesagem ? formatarPeso(pesagem.pesoKg) : "");
   const [padronizada, setPadronizada] = useState(pesagem?.padronizada ?? true);
   const [nota, setNota] = useState(pesagem?.nota ?? "");
@@ -223,10 +229,29 @@ function FormPesagem({
       setErro("Digite o peso em kg, como 72,5.");
       return;
     }
+    if (!quando) {
+      setErro("Diga quando foi a pesagem.");
+      return;
+    }
     setSalvando(true);
     setErro(null);
     try {
-      await wlApi.salvarPesagem(dia, { pesoKg: kg, padronizada, nota: nota.trim() || null });
+      /*
+       * O dia sai do próprio campo, cortando os dez primeiros caracteres do
+       * texto local ("2026-10-15T06:13" → "2026-10-15").
+       *
+       * Daqui e não do ISO: `new Date(…).toISOString().slice(0, 10)` daria o dia
+       * em UTC, e uma pesagem às 22h de Brasília cairia no dia seguinte. O que o
+       * campo mostra é o dia que a pessoa quis dizer.
+       */
+      const dados = {
+        dia: quando.slice(0, 10),
+        medidoEm: doCampoLocal(quando),
+        pesoKg: kg,
+        padronizada,
+        nota: nota.trim() || null,
+      };
+      await (pesagem ? wlApi.salvarPesagem(pesagem.id, dados) : wlApi.criarPesagem(dados));
       await aoSalvar();
     } catch (e) {
       setErro((e as Error).message);
@@ -258,14 +283,18 @@ function FormPesagem({
             <span className="text-tinta-3">kg</span>
           </div>
         </label>
+        {/*
+          `max` no fim do dia de hoje e não em `hoje` seco: o atributo compara o
+          valor inteiro, e "2026-10-15" como teto recusaria qualquer hora de hoje
+          que não fosse meia-noite.
+        */}
         <input
-          type="date"
-          value={dia}
-          max={hoje}
-          onChange={(e) => setDia(e.target.value)}
-          disabled={pesagem !== null}
-          aria-label="Dia da pesagem"
-          className="rounded-xl border border-borda bg-fundo px-2 text-sm disabled:opacity-60"
+          type="datetime-local"
+          value={quando}
+          max={`${hoje}T23:59`}
+          onChange={(e) => setQuando(e.target.value)}
+          aria-label="Quando foi a pesagem"
+          className="rounded-xl border border-borda bg-fundo px-2 text-sm"
         />
       </div>
       <input
@@ -352,13 +381,13 @@ function Historico({
 }) {
   const [todas, setTodas] = useState(false);
   /*
-   * Qual linha está indo para o servidor, pelo dia (que é o id da pesagem).
+   * Qual linha está indo para o servidor, pelo id da pesagem.
    *
-   * Um dia e não um booleano: com um booleano, clicar numa estrela travaria
+   * Um id e não um booleano: com um booleano, clicar numa estrela travaria
    * todas as outras. Aqui só a linha em viagem fica surda ao clique, que é o
-   * que evita dois PUTs no mesmo dia se o dedo bater duas vezes.
+   * que evita dois PUTs na mesma pesagem se o dedo bater duas vezes.
    */
-  const [salvando, setSalvando] = useState<string | null>(null);
+  const [salvando, setSalvando] = useState<number | null>(null);
   const recentes = [...pesagens].reverse();
   const visiveis = todas ? recentes : recentes.slice(0, 10);
 
@@ -371,9 +400,11 @@ function Historico({
    * ações — a edição de sempre, com um campo diferente.
    */
   async function alternar(p: Pesagem) {
-    setSalvando(p.data);
+    setSalvando(p.id);
     try {
-      await wlApi.salvarPesagem(p.data, {
+      await wlApi.salvarPesagem(p.id, {
+        dia: p.dia,
+        medidoEm: p.medidoEm,
         pesoKg: p.pesoKg,
         padronizada: !p.padronizada,
         nota: p.nota,
@@ -387,9 +418,10 @@ function Historico({
   }
 
   async function apagar(p: Pesagem) {
-    if (!confirm(`Apagar a pesagem de ${formatarDia(p.data, true)} (${formatarPeso(p.pesoKg)} kg)?`)) return;
+    const quando = `${formatarDia(p.dia, true)} às ${formatarHora(p.medidoEm)}`;
+    if (!confirm(`Apagar a pesagem de ${quando} (${formatarPeso(p.pesoKg)} kg)?`)) return;
     try {
-      await wlApi.apagarPesagem(p.data);
+      await wlApi.apagarPesagem(p.id);
       await aoMudar();
     } catch (e) {
       aoErro((e as Error).message);
@@ -404,15 +436,21 @@ function Historico({
           // A diferença é contra a pesagem anterior no tempo — a próxima da lista.
           const anterior = recentes[i + 1];
           return (
-            <li key={p.data} className="flex items-center gap-3 px-4 py-2.5">
+            <li key={p.id} className="flex items-center gap-3 px-4 py-2.5">
               <Estrela
                 pesagem={p}
-                salvando={salvando === p.data}
+                salvando={salvando === p.id}
                 aoAlternar={() => void alternar(p)}
               />
               <div className="min-w-0 flex-1">
                 <div className="tabular text-sm">
-                  <span className="text-tinta-2">{formatarDia(p.data, true)}</span>
+                  <span className="text-tinta-2">{formatarDia(p.dia, true)}</span>
+                  {/*
+                    A hora, sempre. Antes não existia porque havia uma pesagem por
+                    dia e ela não distinguia nada; agora é ela que diz qual é qual
+                    quando o dia tem duas.
+                  */}
+                  <span className="ml-1.5 text-xs text-tinta-3">{formatarHora(p.medidoEm)}</span>
                   <span className="ml-3 font-medium">{formatarPeso(p.pesoKg)} kg</span>
                   {anterior && <span className="ml-2 text-xs text-tinta-3">{formatarVariacao(p.pesoKg - anterior.pesoKg)}</span>}
                 </div>
@@ -463,7 +501,7 @@ function Estrela({
       onClick={aoAlternar}
       disabled={salvando}
       aria-pressed={pesagem.padronizada}
-      aria-label={`Pesagem padronizada em ${formatarDia(pesagem.data, true)}`}
+      aria-label={`Pesagem padronizada em ${formatarDia(pesagem.dia, true)} às ${formatarHora(pesagem.medidoEm)}`}
       title={
         pesagem.padronizada
           ? "Pesagem padronizada: de manhã, depois do banheiro, sem ter comido, sem roupa, na mesma balança. Clique para marcar como fora do padrão."
