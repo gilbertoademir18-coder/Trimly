@@ -6,8 +6,10 @@ import {
   faixaDaPontuacao,
   formatarDias,
   formatarImc,
+  formatarLibras,
   formatarPeso,
   formatarVariacao,
+  formatarVariacaoEmLibras,
   imc,
   lerPeso,
   marcasDoEixo,
@@ -132,6 +134,34 @@ describe("emLibras", () => {
     // Uma casa e vírgula, pela mesma função — a unidade muda, o feitio não.
     expect(formatarPeso(emLibras(95.9))).toBe("211,4");
     expect(formatarPeso(emLibras(100))).toBe("220,5");
+  });
+});
+
+describe("formatarLibras", () => {
+  it("vem entre parênteses, com a unidade", () => {
+    // Os parênteses são do formato e não de cada lugar que o usa: a libra
+    // aparece em seis pontos da tela, e espalhá-los é como um fica para trás.
+    expect(formatarLibras(95.9)).toBe("(211,4 lb)");
+    expect(formatarLibras(70.4)).toBe("(155,2 lb)");
+  });
+
+  it("mantém a casa decimal no redondo, como o quilo", () => {
+    expect(formatarLibras(0.45359237)).toBe("(1,0 lb)");
+  });
+});
+
+describe("formatarVariacaoEmLibras", () => {
+  it("leva o sinal junto", () => {
+    /*
+     * O que esta função existe para impedir: uma PERDA de 13,7 kg virar um
+     * "30,2 lb" sem sinal, que ao lado de "−13,7 kg" se lê como ganho.
+     */
+    expect(formatarVariacaoEmLibras(-13.7)).toBe("(−30,2 lb)");
+    expect(formatarVariacaoEmLibras(1.7)).toBe("(+3,7 lb)");
+  });
+
+  it("sem variação não ganha sinal", () => {
+    expect(formatarVariacaoEmLibras(0)).toBe("(0,0 lb)");
   });
 });
 

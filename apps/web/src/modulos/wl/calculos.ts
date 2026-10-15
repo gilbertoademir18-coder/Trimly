@@ -100,6 +100,25 @@ export function emLibras(kg: number): number {
   return kg * LIBRAS_POR_KG;
 }
 
+/**
+ * O mesmo peso em libras, pronto para a tela: `95.9` → `"(211,4 lb)"`.
+ *
+ * Os parênteses fazem parte do formato, e não de cada lugar que o usa: a
+ * libra aparece em seis pontos da tela de peso, e espalhar `(` e `)` por todos
+ * eles é como um fica para trás quando o feitio muda.
+ *
+ * Entre parênteses porque a libra é a leitura secundária — ela acompanha o
+ * quilo, não concorre com ele.
+ */
+export function formatarLibras(kg: number): string {
+  return `(${formatarPeso(emLibras(kg))} lb)`;
+}
+
+/** Como `formatarLibras`, mas para uma diferença: o sinal vem junto. */
+export function formatarVariacaoEmLibras(kg: number): string {
+  return `(${formatarVariacao(emLibras(kg))} lb)`;
+}
+
 /** 72.5 → `"72,5"`; 72 → `"72,0"`. Uma casa: a balança de casa não vê mais que isso. */
 export function formatarPeso(kg: number): string {
   return kg.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });

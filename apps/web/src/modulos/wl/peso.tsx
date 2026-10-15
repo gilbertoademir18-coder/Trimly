@@ -8,13 +8,14 @@ import {
   diaLocal,
   diasDoProjeto,
   doCampoLocal,
-  emLibras,
   formatarDia,
   formatarDias,
   formatarHora,
   formatarImc,
+  formatarLibras,
   formatarPeso,
   formatarVariacao,
+  formatarVariacaoEmLibras,
   imc,
   lerPeso,
   ordenarProjetos,
@@ -187,14 +188,14 @@ export function PaginaPeso() {
                 <Numero
                   rotulo="Último registro"
                   valor={`${formatarPeso(resumo.atual.pesoKg)} kg`}
-                  segundo={`${formatarPeso(emLibras(resumo.atual.pesoKg))} lb`}
+                  segundo={formatarLibras(resumo.atual.pesoKg)}
                   detalhe={pontaEm(resumo.atual, perfil?.alturaCm ?? null)}
                   grande
                 />
                 <Numero
                   rotulo="Primeiro registro"
                   valor={`${formatarPeso(resumo.inicial.pesoKg)} kg`}
-                  segundo={`${formatarPeso(emLibras(resumo.inicial.pesoKg))} lb`}
+                  segundo={formatarLibras(resumo.inicial.pesoKg)}
                   detalhe={pontaEm(resumo.inicial, perfil?.alturaCm ?? null)}
                   grande
                 />
@@ -207,7 +208,7 @@ export function PaginaPeso() {
                 <Numero
                   rotulo="Desde o início"
                   valor={`${formatarVariacao(resumo.variacao)} kg`}
-                  segundo={`${formatarVariacao(emLibras(resumo.variacao))} lb`}
+                  segundo={formatarVariacaoEmLibras(resumo.variacao)}
                   detalhe={`em ${formatarDias(diasDoProjeto(emFoco)!)}`}
                 />
                 {resumo.faltam !== null && (
@@ -218,12 +219,8 @@ export function PaginaPeso() {
                      * Sem segunda unidade quando o card diz "Atingida": ali o valor
                      * não é um peso, e "Atingida 0 lb" não quer dizer nada.
                      */
-                    segundo={
-                      resumo.faltam > 0
-                        ? `${formatarPeso(emLibras(resumo.faltam))} lb`
-                        : undefined
-                    }
-                    detalhe={`meta de ${formatarPeso(projetoAberto!.pesoAlvo!)} kg · ${formatarPeso(emLibras(projetoAberto!.pesoAlvo!))} lb`}
+                    segundo={resumo.faltam > 0 ? formatarLibras(resumo.faltam) : undefined}
+                    detalhe={`meta de ${formatarPeso(projetoAberto!.pesoAlvo!)} kg ${formatarLibras(projetoAberto!.pesoAlvo!)}`}
                   />
                 )}
               </section>
@@ -697,9 +694,7 @@ function Historico({
                   */}
                   <span className="ml-1.5 text-xs text-tinta-3">{formatarHora(p.medidoEm)}</span>
                   <span className="ml-3 font-medium">{formatarPeso(p.pesoKg)} kg</span>
-                  <span className="ml-1.5 text-xs text-tinta-3">
-                    {formatarPeso(emLibras(p.pesoKg))} lb
-                  </span>
+                  <span className="ml-1.5 text-xs text-tinta-3">{formatarLibras(p.pesoKg)}</span>
                   {anterior && <span className="ml-2 text-xs text-tinta-3">{formatarVariacao(p.pesoKg - anterior.pesoKg)}</span>}
                 </div>
                 {p.nota && <div className="truncate text-xs text-tinta-3">{p.nota}</div>}
@@ -947,9 +942,7 @@ function CartaoProjeto({
           ) : (
             <>
               meta {formatarPeso(projeto.pesoAlvo)} kg{" "}
-              <span className="text-xs text-tinta-3">
-                {formatarPeso(emLibras(projeto.pesoAlvo))} lb
-              </span>
+              <span className="text-xs text-tinta-3">{formatarLibras(projeto.pesoAlvo)}</span>
             </>
           )}
         </span>
