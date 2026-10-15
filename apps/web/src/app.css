@@ -107,3 +107,23 @@ body {
 .tabular {
   font-variant-numeric: tabular-nums;
 }
+
+/*
+ * Faixa que rola de lado sem mostrar a barra.
+ *
+ * Só a barra some: a rolagem continua, e com ela o arrastar com o dedo, a
+ * roda com shift e o `Tab` levando o foco a um item fora da vista. Quem dá o
+ * caminho visível no lugar dela são as setas do `Carrossel` — esconder a barra
+ * sem pôr nada no lugar deixaria o conteúdo escondido sem pista nenhuma.
+ *
+ * As duas regras porque não há uma só que sirva aos dois motores:
+ * `scrollbar-width` é o padrão (Firefox e Chrome novo) e o pseudo-elemento é o
+ * que o WebKit entende.
+ */
+.sem-barra {
+  scrollbar-width: none;
+}
+
+.sem-barra::-webkit-scrollbar {
+  display: none;
+}

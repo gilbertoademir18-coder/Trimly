@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Modal } from "../../modal.tsx";
 import { wlApi } from "./api.ts";
+import { Carrossel } from "../../carrossel.tsx";
 import { AcaoDaPagina } from "../../layout.tsx";
 import { Aviso } from "./aviso.tsx";
 import {
@@ -763,6 +764,10 @@ function Estrela({
  * todos de uma vez é o que mostra a forma do histórico — onde houve tentativa e
  * onde houve silêncio. Num seletor fechado isso só apareceria ao abrir.
  *
+ * A fila vai num `Carrossel`: as setas ‹ › substituem a barra de rolagem, que
+ * no desktop cortava a faixa com um traço cinza. Ela não anda sozinha — só
+ * quando alguém toca a seta.
+ *
  * Cada ficha leva o período do projeto, calculado das pesagens dele. É o que
  * permite reconhecer um projeto sem lembrar o nome que se deu a ele.
  */
@@ -783,7 +788,7 @@ function SeletorDeProjeto({
   aoNovoProjeto: () => void;
 }) {
   return (
-    <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+    <Carrossel rotuloAnterior="Ver projetos anteriores" rotuloProximo="Ver mais projetos">
       {projetos.map((p) => {
         const doProjeto = pesagensDoProjeto(pesagens, p.id);
         const periodo = periodoDoProjeto(doProjeto);
@@ -830,7 +835,7 @@ function SeletorDeProjeto({
       >
         + Projeto
       </button>
-    </div>
+    </Carrossel>
   );
 }
 
