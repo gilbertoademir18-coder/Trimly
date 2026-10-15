@@ -5,7 +5,9 @@ import {
   faixaDaPontuacao,
   filtrarPeriodo,
   formatarDias,
+  formatarImc,
   formatarVariacao,
+  imc,
   lerPeso,
   marcasDoEixo,
   mediaPontuacao,
@@ -114,28 +116,61 @@ describe("resumir", () => {
   const serie = [p("2026-09-01", 90), p("2026-09-15", 87), p("2026-09-30", 85)];
 
   it("devolve null sem pesagens", () => {
-    expect(resumir([], null, null)).toBeNull();
+    expect(resumir([], null)).toBeNull();
   });
 
   it("calcula variação, quanto falta e progresso", () => {
-    const r = resumir(serie, 80, null)!;
+    const r = resumir(serie, 80)!;
     expect(r.variacao).toBe(-5);
     expect(r.faltam).toBe(5);
     expect(r.progresso).toBe(0.5);
-    expect(r.imc).toBeNull();
+  });
+
+  it("guarda as duas pontas, que é o que a tela mostra", () => {
+    const r = resumir(serie, 80)!;
+    expect(r.inicial.pesoKg).toBe(90);
+    expect(r.atual.pesoKg).toBe(85);
   });
 
   it("limita o progresso entre 0 e 100%", () => {
-    expect(resumir([p("2026-09-01", 90), p("2026-09-02", 92)], 80, null)!.progresso).toBe(0);
-    expect(resumir([p("2026-09-01", 90), p("2026-09-02", 78)], 80, null)!.progresso).toBe(1);
+    expect(resumir([p("2026-09-01", 90), p("2026-09-02", 92)], 80)!.progresso).toBe(0);
+    expect(resumir([p("2026-09-01", 90), p("2026-09-02", 78)], 80)!.progresso).toBe(1);
   });
 
   it("não divide por zero quando já começou na meta", () => {
-    expect(resumir([p("2026-09-01", 80)], 80, null)!.progresso).toBe(1);
+    expect(resumir([p("2026-09-01", 80)], 80)!.progresso).toBe(1);
+  });
+});
+
+describe("imc", () => {
+  it("calcula a partir do peso e da altura em cm", () => {
+    expect(imc(85, 180)).toBeCloseTo(26.23, 2);
+    expect(imc(70.4, 170)).toBeCloseTo(24.36, 2);
   });
 
-  it("calcula o IMC quando há altura", () => {
-    expect(resumir(serie, 80, 180)!.imc).toBeCloseTo(26.23, 2);
+  it("devolve null sem altura, porque o perfil é opcional", () => {
+    expect(imc(85, null)).toBeNull();
+    // Zero também: altura 0 faria a divisão estourar para o infinito.
+    expect(imc(85, 0)).toBeNull();
+  });
+
+  it("é de UM peso — as duas pontas do projeto dão IMCs diferentes", () => {
+    // É por isso que o IMC deixou de ser campo do resumo: a tela mostra o da
+    // primeira pesagem ao lado do da última, e um campo só não diria os dois.
+    expect(imc(84.1, 170)!).toBeCloseTo(29.1, 1);
+    expect(imc(70.4, 170)!).toBeCloseTo(24.4, 1);
+  });
+});
+
+describe("formatarImc", () => {
+  it("usa uma casa decimal e vírgula", () => {
+    expect(formatarImc(24.36)).toBe("24,4");
+    expect(formatarImc(31.94)).toBe("31,9");
+  });
+
+  it("mantém a casa decimal no número redondo", () => {
+    // Sem o mínimo, 25 sairia "25" e a coluna de números perdia o alinhamento.
+    expect(formatarImc(25)).toBe("25,0");
   });
 });
 
@@ -191,13 +226,13 @@ describe("várias pesagens no mesmo dia", () => {
   ];
 
   it("o peso atual é a última pesagem no tempo, não a primeira do dia", () => {
-    const r = resumir(doisNoDia, null, null)!;
+    const r = resumir(doisNoDia, null)!;
     expect(r.atual.pesoKg).toBe(86.4);
     expect(r.atual.medidoEm).toBe(doisNoDia[2]!.medidoEm);
   });
 
   it("a variação conta da primeira à última, atravessando o dia repetido", () => {
-    expect(resumir(doisNoDia, null, null)!.variacao).toBeCloseTo(-3.6, 10);
+    expect(resumir(doisNoDia, null)!.variacao).toBeCloseTo(-3.6, 10);
   });
 
   it("o filtro de período leva as duas do mesmo dia ou nenhuma", () => {
@@ -370,14 +405,13 @@ describe("os recortes de projeto", () => {
   });
 
   describe("resumir sem meta", () => {
-    it("dá variação e IMC, mas não faltam nem progresso", () => {
-      // É o caso de "sem projeto" e de "tudo": um apanhado, não uma tentativa
-      // com objetivo. Sem alvo não há o que faltar, mas o peso ainda variou.
-      const r = resumir(pesagensDoProjeto(lista, null), null, 180)!;
+    it("dá as pontas e a variação, mas não faltam nem progresso", () => {
+      // É o caso de "sem projeto" e dos projetos reconstruídos do passado: sem
+      // alvo não há o que faltar, mas o peso ainda variou entre as duas pontas.
+      const r = resumir(pesagensDoProjeto(lista, null), null)!;
       expect(r.variacao).toBe(-1);
       expect(r.faltam).toBeNull();
       expect(r.progresso).toBeNull();
-      expect(r.imc).toBeCloseTo(24.38, 2);
     });
   });
 });

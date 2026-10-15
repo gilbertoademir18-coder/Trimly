@@ -10,8 +10,10 @@ import {
   formatarDia,
   formatarDias,
   formatarHora,
+  formatarImc,
   formatarPeso,
   formatarVariacao,
+  imc,
   lerPeso,
   ordenarProjetos,
   paraCampoLocal,
@@ -125,7 +127,7 @@ export function PaginaPeso() {
    * se olha ali não é uma tentativa com objetivo, é um apanhado. O resumo
    * aguenta alvo nulo e devolve variação e IMC do mesmo jeito.
    */
-  const resumo = resumir(emFoco, projetoAberto?.pesoAlvo ?? null, perfil?.alturaCm ?? null);
+  const resumo = resumir(emFoco, projetoAberto?.pesoAlvo ?? null);
   const soltas = pesagens.filter((x) => x.projetoId === null).length;
 
   /*
@@ -192,13 +194,13 @@ export function PaginaPeso() {
                 <Numero
                   rotulo="Último peso"
                   valor={`${formatarPeso(resumo.atual.pesoKg)} kg`}
-                  detalhe={`em ${formatarDia(resumo.atual.dia, true)}`}
+                  detalhe={pontaEm(resumo.atual, perfil?.alturaCm ?? null)}
                   grande
                 />
                 <Numero
                   rotulo="Primeiro peso"
                   valor={`${formatarPeso(resumo.inicial.pesoKg)} kg`}
-                  detalhe={`em ${formatarDia(resumo.inicial.dia, true)}`}
+                  detalhe={pontaEm(resumo.inicial, perfil?.alturaCm ?? null)}
                   grande
                 />
                 {/*
@@ -217,13 +219,6 @@ export function PaginaPeso() {
                     rotulo={resumo.faltam > 0 ? "Faltam" : "Meta"}
                     valor={resumo.faltam > 0 ? `${formatarPeso(resumo.faltam)} kg` : "Atingida"}
                     detalhe={`meta de ${formatarPeso(projetoAberto!.pesoAlvo!)} kg`}
-                  />
-                )}
-                {resumo.imc !== null && (
-                  <Numero
-                    rotulo="IMC"
-                    valor={resumo.imc.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}
-                    detalhe={`altura ${perfil!.alturaCm} cm`}
                   />
                 )}
               </section>
@@ -552,6 +547,26 @@ function FormPesagem({
       </div>
     </form>
   );
+}
+
+/**
+ * O detalhe de um card de ponta: `"em 03/10/2026 · IMC 31,9"`.
+ *
+ * O IMC entrou aqui e deixou de ter card próprio porque ele é do PESO, não do
+ * projeto: encostado no número que o gerou, dá para comparar o IMC da primeira
+ * pesagem com o da última sem contas. Num card só, ele falava de uma ponta e
+ * ficava calado sobre a outra.
+ *
+ * Sem a altura à vista: ela é a mesma em todos os cards e em todos os
+ * projetos, então repeti-la gastava a linha sem informar nada. Quem quiser
+ * mudá-la acha no Perfil, embaixo.
+ *
+ * Sem altura cadastrada, fica só a data — o perfil é opcional.
+ */
+function pontaEm(pesagem: Pesagem, alturaCm: number | null): string {
+  const data = `em ${formatarDia(pesagem.dia, true)}`;
+  const valor = imc(pesagem.pesoKg, alturaCm);
+  return valor === null ? data : `${data} · IMC ${formatarImc(valor)}`;
 }
 
 function Numero({ rotulo, valor, detalhe, grande }: { rotulo: string; valor: string; detalhe: string; grande?: boolean }) {

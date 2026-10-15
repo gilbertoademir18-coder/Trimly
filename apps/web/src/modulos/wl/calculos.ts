@@ -102,26 +102,40 @@ export type Resumo = {
   faltam: number | null;
   /** 0 a 1: quanto do caminho inicial → meta já foi percorrido. `null` sem meta. */
   progresso: number | null;
-  imc: number | null;
 };
+
+/**
+ * O IMC de um peso. `null` sem altura no perfil, que é opcional.
+ *
+ * Função à parte, e não campo do resumo, porque o IMC é de UM peso — e a tela
+ * mostra o do primeiro e o do último do projeto, lado a lado. Como campo, o
+ * resumo teria de carregar dois, e `resumir` precisaria conhecer a altura só
+ * para repassá-la a uma divisão.
+ */
+export function imc(pesoKg: number, alturaCm: number | null): number | null {
+  if (!alturaCm) return null;
+  return pesoKg / (alturaCm / 100) ** 2;
+}
+
+/** `24.38…` → `"24,4"`. Uma casa, como o peso. */
+export function formatarImc(valor: number): string {
+  return valor.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+}
 
 /**
  * O retrato do momento. `pesagens` precisa estar em ordem crescente de data,
  * que é como a API entrega.
  *
- * O alvo e a altura entram separados porque vêm de lugares diferentes: o alvo
- * é do projeto que está sendo olhado, a altura é da pessoa. Juntá-los num
- * objeto só esconderia que mexer num não mexe no outro.
+ * O alvo entra solto e não dentro de um objeto de meta: ele é do projeto que
+ * está sendo olhado, e muda quando se troca de projeto.
  *
- * Com `pesoAlvo` nulo (o caso de "sem projeto", que não tem meta) o resumo
- * ainda vale: a variação e o IMC não dependem de alvo. Só `faltam` e
- * `progresso` ficam nulos, porque sem alvo não há o que faltar.
+ * Com `pesoAlvo` nulo (o caso de "sem projeto" e dos projetos reconstruídos do
+ * passado) o resumo ainda vale: as pontas e a variação não dependem de alvo.
+ * Só `faltam` e `progresso` ficam nulos, porque sem alvo não há o que faltar.
+ *
+ * A altura não entra aqui: o IMC é de um peso, não do resumo, e mora em `imc`.
  */
-export function resumir(
-  pesagens: Pesagem[],
-  pesoAlvo: number | null,
-  alturaCm: number | null,
-): Resumo | null {
+export function resumir(pesagens: Pesagem[], pesoAlvo: number | null): Resumo | null {
   const inicial = pesagens[0];
   const atual = pesagens.at(-1);
   if (!inicial || !atual) return null;
@@ -136,9 +150,7 @@ export function resumir(
     progresso = caminho <= 0 ? 1 : limitar((inicial.pesoKg - atual.pesoKg) / caminho, 0, 1);
   }
 
-  const imc = alturaCm ? atual.pesoKg / (alturaCm / 100) ** 2 : null;
-
-  return { atual, inicial, variacao: atual.pesoKg - inicial.pesoKg, faltam, progresso, imc };
+  return { atual, inicial, variacao: atual.pesoKg - inicial.pesoKg, faltam, progresso };
 }
 
 /*
