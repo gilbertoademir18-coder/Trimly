@@ -14,6 +14,8 @@ import {
   podeSomar,
   pontosPossiveis,
   pontuarDia,
+  reordenar,
+  reordenarSubconjunto,
   resumir,
   semanasDoMes,
   somarPontos,
@@ -405,5 +407,88 @@ describe("mudarMes", () => {
   it("vira o ano nas duas direções", () => {
     expect(mudarMes(2026, 12, 1)).toEqual({ ano: 2027, mes: 1 });
     expect(mudarMes(2026, 1, -1)).toEqual({ ano: 2025, mes: 12 });
+  });
+});
+
+describe("reordenar", () => {
+  const abc = ["a", "b", "c", "d"];
+
+  it("leva um item para tras e para frente", () => {
+    expect(reordenar(abc, 0, 2)).toEqual(["b", "c", "a", "d"]);
+    expect(reordenar(abc, 3, 1)).toEqual(["a", "d", "b", "c"]);
+  });
+
+  it("move entre vizinhos, que e o caso das setas", () => {
+    expect(reordenar(abc, 1, 0)).toEqual(["b", "a", "c", "d"]);
+    expect(reordenar(abc, 2, 3)).toEqual(["a", "b", "d", "c"]);
+  });
+
+  it("nao mexe quando a origem e o destino sao o mesmo", () => {
+    expect(reordenar(abc, 2, 2)).toEqual(abc);
+  });
+
+  it("devolve a lista intacta com indice fora da faixa", () => {
+    // O arrasto pode pedir uma posicao que a lista ja nao tem, se uma linha
+    // saiu no meio do gesto. Embaralhar ali seria pior que nao fazer nada.
+    expect(reordenar(abc, -1, 2)).toEqual(abc);
+    expect(reordenar(abc, 0, 9)).toEqual(abc);
+    expect(reordenar(abc, 9, 0)).toEqual(abc);
+    expect(reordenar([], 0, 0)).toEqual([]);
+  });
+
+  it("nao altera a lista recebida", () => {
+    const original = [...abc];
+    reordenar(abc, 0, 3);
+    expect(abc).toEqual(original);
+  });
+
+  it("preserva todos os itens, so a ordem muda", () => {
+    const movido = reordenar(abc, 1, 3);
+    expect([...movido].sort()).toEqual([...abc].sort());
+    expect(movido).toHaveLength(abc.length);
+  });
+});
+
+describe("reordenarSubconjunto", () => {
+  // P = positiva, N = negativa. A tela reordena so dentro de um tipo.
+  const lista = ["P1", "N1", "P2", "P3", "N2"];
+  const positiva = (x: string) => x.startsWith("P");
+
+  it("move dentro do subconjunto usando indices do subconjunto", () => {
+    // P1 esta na posicao 0 das positivas; mandar para 2 deixa P2, P3, P1.
+    // As vagas das positivas na lista completa sao 0, 2 e 3.
+    expect(reordenarSubconjunto(lista, positiva, 0, 2)).toEqual(["P2", "N1", "P3", "P1", "N2"]);
+  });
+
+  it("nao tira do lugar quem esta fora do subconjunto", () => {
+    const fora = (x: string) => !positiva(x);
+    const depois = reordenarSubconjunto(lista, positiva, 0, 2);
+    // As negativas continuam nas mesmas posicoes da lista completa.
+    expect(depois.filter(fora)).toEqual(lista.filter(fora));
+    expect(depois.indexOf("N1")).toBe(lista.indexOf("N1"));
+    expect(depois.indexOf("N2")).toBe(lista.indexOf("N2"));
+  });
+
+  it("devolve a lista intacta quando nao ha o que mover", () => {
+    expect(reordenarSubconjunto(lista, positiva, 1, 1)).toEqual(lista);
+    expect(reordenarSubconjunto(lista, positiva, 0, 9)).toEqual(lista);
+    // Indice valido na lista completa mas nao no subconjunto: so ha 3 positivas.
+    expect(reordenarSubconjunto(lista, positiva, 0, 4)).toEqual(lista);
+  });
+
+  it("aguenta subconjunto vazio ou de um so", () => {
+    expect(reordenarSubconjunto(lista, (x) => x === "nada", 0, 1)).toEqual(lista);
+    expect(reordenarSubconjunto(lista, (x) => x === "N1", 0, 0)).toEqual(lista);
+  });
+
+  it("preserva todos os itens", () => {
+    const depois = reordenarSubconjunto(lista, positiva, 2, 0);
+    expect([...depois].sort()).toEqual([...lista].sort());
+  });
+
+  it("nao altera a lista recebida", () => {
+    const original = [...lista];
+    reordenarSubconjunto(lista, positiva, 0, 2);
+    expect(lista).toEqual(original);
   });
 });

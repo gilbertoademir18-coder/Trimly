@@ -31,6 +31,13 @@ export const wlApi = {
   criarAcao: (acao: AcaoNova) => api<Acao>("/wl/acoes", { method: "POST", corpo: acao }),
   salvarAcao: (id: number, acao: AcaoNova) => api<Acao>(`/wl/acoes/${id}`, { method: "PUT", corpo: acao }),
   apagarAcao: (id: number) => api<void>(`/wl/acoes/${id}`, { method: "DELETE" }),
+  /**
+   * Só a ordem, da lista inteira de uma vez. Rota própria porque `salvarAcao`
+   * exige o corpo completo e reconcilia opções e grupos — um arrasto não tem
+   * nada que mexer nisso. Devolve as ações já reordenadas.
+   */
+  ordenarAcoes: (ordens: { id: number; ordem: number }[]) =>
+    api<Acao[]>("/wl/acoes/ordem", { method: "PUT", corpo: { ordens } }),
 
   grupos: () => api<Grupo[]>("/wl/grupos"),
   criarGrupo: (g: GrupoNovo) => api<Grupo>("/wl/grupos", { method: "POST", corpo: g }),

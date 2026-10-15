@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useArrastavel } from "../../arrastar.ts";
 import { Modal } from "../../modal.tsx";
 import { wlApi, type AcaoNova } from "./api.ts";
 import { Aviso, CabecalhoInterno } from "./aviso.tsx";
@@ -6,6 +7,8 @@ import {
   diaLocal,
   opcoesAtivas,
   pontosPossiveis,
+  reordenar,
+  reordenarSubconjunto,
   temOpcoes,
   type Acao,
   type Grupo,
@@ -37,16 +40,34 @@ export function PaginaAcoes() {
    */
   const [edicao, setEdicao] = useState<{ acao: Acao | null } | null>(null);
 
+  /*
+   * A lista também num `ref`, atualizada no mesmo instante que o estado.
+   *
+   * Reordenar e gravar acontecem no mesmo tique quando se usa as setas, e o
+   * `acoes` do render ainda seria o de antes do movimento — gravaria a ordem
+   * velha. O arrasto não sofria disso (o soltar vem renders depois), mas um ref
+   * resolve os dois casos sem depender de quando o React decide redesenhar.
+   *
+   * Toda escrita na lista passa por `definirAcoes`, para os dois nunca se
+   * separarem.
+   */
+  const acoesRef = useRef<Acao[] | null>(null);
+
+  const definirAcoes = useCallback((lista: Acao[] | null) => {
+    acoesRef.current = lista;
+    setAcoes(lista);
+  }, []);
+
   const carregar = useCallback(async () => {
     try {
       const [a, g] = await Promise.all([wlApi.acoes(), wlApi.grupos()]);
-      setAcoes(a);
+      definirAcoes(a);
       setGrupos(g);
       setErro(null);
     } catch (e) {
       setErro((e as Error).message);
     }
-  }, []);
+  }, [definirAcoes]);
 
   useEffect(() => {
     void carregar();
@@ -75,6 +96,43 @@ export function PaginaAcoes() {
   /** As linhas da lista só sabem qual ação editar; a janela é assunto daqui. */
   function abrirEdicao(acao: Acao) {
     setEdicao({ acao });
+  }
+
+  /*
+   * Arrastar uma ação dentro de uma seção.
+   *
+   * Durante o gesto só mexe na lista daqui, para a tela acompanhar o dedo sem
+   * uma viagem ao servidor por pixel. Gravar fica para quando o dedo larga.
+   *
+   * As seções são recortes calculados de uma lista só (com opções, positivas,
+   * negativas), então reordenar dentro de uma não pode mexer nas outras — quem
+   * cuida disso é `reordenarSubconjunto`.
+   */
+  function moverNaSecao(pertence: (a: Acao) => boolean, de: number, para: number) {
+    const atuais = acoesRef.current;
+    if (atuais) definirAcoes(reordenarSubconjunto(atuais, pertence, de, para));
+  }
+
+  /*
+   * A ordem nova, numerada do zero.
+   *
+   * Manda a lista inteira e não só o que mudou: as ações nascem com `ordem` 0 e
+   * hoje estão quase todas empatadas, desempatando por nome. Renumerar todo
+   * mundo de uma vez é o que transforma a ordem que está na tela na ordem
+   * gravada — senão o primeiro arrasto brigaria com os empates.
+   */
+  async function gravarOrdem() {
+    const atuais = acoesRef.current;
+    if (!atuais) return;
+    try {
+      definirAcoes(await wlApi.ordenarAcoes(atuais.map((a, i) => ({ id: a.id, ordem: i }))));
+      setErro(null);
+    } catch (e) {
+      setErro((e as Error).message);
+      // A tela ficou mostrando uma ordem que o banco recusou: busca de novo
+      // para não seguir mentindo sobre o que está gravado.
+      await carregar();
+    }
   }
 
   async function mexer(acao: () => Promise<unknown>) {
@@ -159,30 +217,61 @@ export function PaginaAcoes() {
         </div>
 
         <div className="flex flex-col gap-5">
-          <Secao titulo="Com opções" vazio="" acoes={comOpcoes}>
-            {(a) => <Linha acao={a} aoEditar={abrirEdicao} aoMexer={mexer} />}
-          </Secao>
+          {/*
+            O `pertence` de cada seção é o mesmo filtro que a montou. É por ele
+            que `reordenarSubconjunto` sabe quais vagas da lista completa esta
+            seção ocupa — arrastar aqui não mexe nas outras.
+
+            Não se arrasta de uma seção para outra de propósito: levar uma ação
+            de "Positivas" para "Negativas" seria trocar o sinal dos pontos
+            dela, que é coisa do formulário e não de um gesto.
+          */}
+          <Secao
+            titulo="Com opções"
+            vazio=""
+            acoes={comOpcoes}
+            aoEditar={abrirEdicao}
+            aoMexer={mexer}
+            aoReordenar={(de, para) => moverNaSecao((a) => a.ativa && temOpcoes(a), de, para)}
+            aoLargar={() => void gravarOrdem()}
+          />
 
           <Secao
             titulo="Positivas"
             vazio="Nenhuma ainda. São elas que formam o dia perfeito."
             acoes={positivas}
-          >
-            {(a) => <Linha acao={a} aoEditar={abrirEdicao} aoMexer={mexer} />}
-          </Secao>
+            aoEditar={abrirEdicao}
+            aoMexer={mexer}
+            aoReordenar={(de, para) =>
+              moverNaSecao((a) => a.ativa && !temOpcoes(a) && (a.pontos ?? 0) > 0, de, para)
+            }
+            aoLargar={() => void gravarOrdem()}
+          />
 
           <Secao
             titulo="Negativas"
             vazio="Nenhuma ainda. Elas descontam da nota do dia."
             acoes={negativas}
-          >
-            {(a) => <Linha acao={a} aoEditar={abrirEdicao} aoMexer={mexer} />}
-          </Secao>
+            aoEditar={abrirEdicao}
+            aoMexer={mexer}
+            aoReordenar={(de, para) =>
+              moverNaSecao((a) => a.ativa && !temOpcoes(a) && (a.pontos ?? 0) < 0, de, para)
+            }
+            aoLargar={() => void gravarOrdem()}
+          />
 
+          {/*
+            Arquivadas sem reordenar: elas não aparecem em dia nenhum, então a
+            ordem delas não decide nada.
+          */}
           {arquivadas.length > 0 && (
-            <Secao titulo="Arquivadas" vazio="" acoes={arquivadas}>
-              {(a) => <Linha acao={a} aoEditar={abrirEdicao} aoMexer={mexer} />}
-            </Secao>
+            <Secao
+              titulo="Arquivadas"
+              vazio=""
+              acoes={arquivadas}
+              aoEditar={abrirEdicao}
+              aoMexer={mexer}
+            />
           )}
         </div>
       </div>
@@ -228,41 +317,92 @@ function Secao({
   titulo,
   vazio,
   acoes,
-  children,
+  aoEditar,
+  aoMexer,
+  aoReordenar,
+  aoLargar,
 }: {
   titulo: string;
   vazio: string;
   acoes: Acao[];
-  children: (a: Acao) => React.ReactNode;
+  aoEditar: (a: Acao) => void;
+  aoMexer: (f: () => Promise<unknown>) => Promise<void>;
+  /*
+   * Ausente, a seção não oferece reordenar — é o caso das arquivadas, onde a
+   * ordem não decide nada: elas não aparecem em dia nenhum.
+   */
+  aoReordenar?: (de: number, para: number) => void;
+  aoLargar?: () => void;
 }) {
+  const { arrastando, refDaLinha, alca } = useArrastavel({
+    aoMover: (de, para) => aoReordenar?.(de, para),
+    // Uma gravação por gesto, e não uma por posição pela qual a linha passou.
+    aoLargar: () => aoLargar?.(),
+  });
+
   // Seção sem itens e sem texto de vazio não aparece: é o caso de "Com opções"
   // e "Arquivadas", que só existem quando têm o que mostrar.
   if (acoes.length === 0 && vazio === "") return null;
 
+  // Uma lista de um item só não tem ordem para mudar.
+  const ordenavel = aoReordenar !== undefined && acoes.length > 1;
+
   return (
     <section className="rounded-2xl border border-borda bg-superficie">
-      <h2 className="px-4 pt-4 pb-2 font-medium">{titulo}</h2>
+      <div className="flex items-baseline justify-between gap-2 px-4 pt-4 pb-2">
+        <h2 className="font-medium">{titulo}</h2>
+        {ordenavel && <span className="text-xs text-tinta-3">Arraste pela alça</span>}
+      </div>
       {acoes.length === 0 ? (
         <p className="px-4 pb-4 text-sm text-tinta-3">{vazio}</p>
       ) : (
         <ul className="divide-y divide-borda">
-          {acoes.map((a) => (
-            <li key={a.id}>{children(a)}</li>
+          {acoes.map((a, i) => (
+            <li
+              key={a.id}
+              ref={ordenavel ? refDaLinha(i) : undefined}
+              className={arrastando === i ? "bg-destaque-suave" : undefined}
+            >
+              <Linha
+                acao={a}
+                aoEditar={aoEditar}
+                aoMexer={aoMexer}
+                alca={ordenavel ? alca(i) : undefined}
+                aoSubir={ordenavel && i > 0 ? () => mexerEGravar(i, i - 1) : undefined}
+                aoDescer={
+                  ordenavel && i < acoes.length - 1 ? () => mexerEGravar(i, i + 1) : undefined
+                }
+              />
+            </li>
           ))}
         </ul>
       )}
     </section>
   );
+
+  /** As setas fazem num passo o que o arrasto faz em muitos: move e grava. */
+  function mexerEGravar(de: number, para: number) {
+    aoReordenar?.(de, para);
+    aoLargar?.();
+  }
 }
 
 function Linha({
   acao,
   aoEditar,
   aoMexer,
+  alca,
+  aoSubir,
+  aoDescer,
 }: {
   acao: Acao;
   aoEditar: (a: Acao) => void;
   aoMexer: (f: () => Promise<unknown>) => Promise<void>;
+  /** O que `useArrastavel` entrega para a alça. Ausente, a linha não arrasta. */
+  alca?: React.ComponentProps<"span">;
+  /** Ausentes nas pontas da lista: não há para onde ir. */
+  aoSubir?: () => void;
+  aoDescer?: () => void;
 }) {
   // Arquivar e reativar são a mesma edição com `ativa` trocada. As opções vão
   // junto como estão: sem elas no corpo, o servidor as apagaria.
@@ -289,52 +429,97 @@ function Linha({
       (acao.repetivel ? ` · até ${acao.alvoDiario}× por dia` : "");
 
   return (
-    <div className={"px-4 py-2.5 " + (acao.ativa ? "" : "opacity-60")}>
-      <div className="flex items-center gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-medium">{acao.nome}</div>
-          <div className="tabular text-xs text-tinta-3">{resumo}</div>
-        </div>
-        <button type="button" onClick={() => aoEditar(acao)} className="text-sm text-tinta-2 hover:text-tinta">
-          Editar
-        </button>
-        <button
-          type="button"
-          onClick={() => void aoMexer(() => wlApi.salvarAcao(acao.id, comAtivaTrocada))}
-          className="text-sm text-tinta-2 hover:text-tinta"
-        >
-          {acao.ativa ? "Arquivar" : "Reativar"}
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            // Com histórico o servidor recusa e explica que o caminho é arquivar.
-            if (confirm("Apagar “" + acao.nome + "” de vez?")) {
-              void aoMexer(() => wlApi.apagarAcao(acao.id));
-            }
-          }}
-          className="text-sm text-tinta-3 hover:text-perigo"
-        >
-          Apagar
-        </button>
-      </div>
+    <div className={"flex items-start gap-2 px-4 py-2.5 " + (acao.ativa ? "" : "opacity-60")}>
+      {/*
+        A coluna de reordenar, igual à do editor de opções: ▲ alça ▼ de pé, os
+        três controles de ordem lendo como um só.
 
-      {temOpcoes(acao) && (
-        <ul className="tabular mt-1 text-xs text-tinta-3">
-          {acao.opcoes.map((o) => (
-            <li key={o.id} className={o.ativa ? "" : "line-through"}>
-              {o.pontos > 0 ? "+" : "−"}
-              {Math.abs(o.pontos)} · {o.nome}
-            </li>
-          ))}
-        </ul>
+        A alça é um `span`, não um `button`: ela existe só para o ponteiro, e
+        quem chega pelo teclado usa as setas. Um botão focável que não responde
+        ao Enter seria uma parada morta no caminho do Tab.
+      */}
+      {alca && (
+        <div className="flex shrink-0 flex-col items-center pt-0.5">
+          <button
+            type="button"
+            onClick={aoSubir}
+            disabled={!aoSubir}
+            aria-label={"Mover “" + acao.nome + "” para cima"}
+            className="px-1 text-xs leading-none text-tinta-3 hover:text-tinta disabled:opacity-30"
+          >
+            ▲
+          </button>
+          <span {...alca} aria-hidden="true" className={alca.className + " px-1 text-tinta-3"}>
+            ⠿
+          </span>
+          <button
+            type="button"
+            onClick={aoDescer}
+            disabled={!aoDescer}
+            aria-label={"Mover “" + acao.nome + "” para baixo"}
+            className="px-1 text-xs leading-none text-tinta-3 hover:text-tinta disabled:opacity-30"
+          >
+            ▼
+          </button>
+        </div>
       )}
+
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-sm font-medium">{acao.nome}</div>
+            <div className="tabular text-xs text-tinta-3">{resumo}</div>
+          </div>
+          <button type="button" onClick={() => aoEditar(acao)} className="text-sm text-tinta-2 hover:text-tinta">
+            Editar
+          </button>
+          <button
+            type="button"
+            onClick={() => void aoMexer(() => wlApi.salvarAcao(acao.id, comAtivaTrocada))}
+            className="text-sm text-tinta-2 hover:text-tinta"
+          >
+            {acao.ativa ? "Arquivar" : "Reativar"}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              // Com histórico o servidor recusa e explica que o caminho é arquivar.
+              if (confirm("Apagar “" + acao.nome + "” de vez?")) {
+                void aoMexer(() => wlApi.apagarAcao(acao.id));
+              }
+            }}
+            className="text-sm text-tinta-3 hover:text-perigo"
+          >
+            Apagar
+          </button>
+        </div>
+
+        {temOpcoes(acao) && (
+          <ul className="tabular mt-1 text-xs text-tinta-3">
+            {acao.opcoes.map((o) => (
+              <li key={o.id} className={o.ativa ? "" : "line-through"}>
+                {o.pontos > 0 ? "+" : "−"}
+                {Math.abs(o.pontos)} · {o.nome}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }
 
 /** O que o formulário guarda de cada opção enquanto se digita. */
 type OpcaoForm = {
+  /**
+   * A identidade da linha para o React, estável enquanto o formulário vive.
+   *
+   * Não dá para usar o índice: reordenar uma lista chaveada por posição faz o
+   * React reaproveitar o DOM errado — arrasta-se uma linha e o texto fica
+   * parado enquanto outra se move. E nem dá para usar só o `id`, porque a opção
+   * recém-adicionada ainda não tem um (ele vem do banco ao salvar).
+   */
+  chave: string;
   id?: number;
   nome: string;
   pontos: string;
@@ -342,7 +527,16 @@ type OpcaoForm = {
   ativa: boolean;
 };
 
-const OPCAO_VAZIA: OpcaoForm = { nome: "", pontos: "", desconta: false, ativa: true };
+/** Só precisa ser única dentro de um formulário, e um contador basta. */
+let proximaChave = 0;
+
+const opcaoVazia = (): OpcaoForm => ({
+  chave: `nova-${proximaChave++}`,
+  nome: "",
+  pontos: "",
+  desconta: false,
+  ativa: true,
+});
 
 /**
  * O formulário separa o sinal do valor: tocar em "Desconta" é mais fácil de
@@ -372,6 +566,9 @@ function FormAcao({
   const [usaOpcoes, setUsaOpcoes] = useState(acao ? temOpcoes(acao) : false);
   const [opcoes, setOpcoes] = useState<OpcaoForm[]>(() =>
     (acao?.opcoes ?? []).map((o) => ({
+      // As que vêm do banco já têm identidade própria; o prefixo só evita
+      // encostar nas chaves das linhas novas.
+      chave: `op-${o.id}`,
       id: o.id,
       nome: o.nome,
       pontos: String(Math.abs(o.pontos)),
@@ -390,6 +587,24 @@ function FormAcao({
   function mudarOpcao(i: number, campos: Partial<OpcaoForm>) {
     setOpcoes((atuais) => atuais.map((o, j) => (j === i ? { ...o, ...campos } : o)));
   }
+
+  /**
+   * Muda a opção de lugar. A conta mora em `reordenar`, que é pura e testada;
+   * aqui só se aplica ao estado.
+   *
+   * O servidor grava `ordem` pela posição no array que o formulário manda (veja
+   * `salvarOpcoes`, na API), então mexer nesta lista é mexer na ordem do banco.
+   */
+  function mover(de: number, para: number) {
+    setOpcoes((atuais) => reordenar(atuais, de, para));
+  }
+
+  /*
+   * O mesmo arrastar da lista de ações, pelo mesmo gancho. Aqui não há o que
+   * gravar ao soltar: as opções só vão para o banco quando o formulário é
+   * salvo, e a ordem viaja junto na posição do array.
+   */
+  const { arrastando, refDaLinha, alca } = useArrastavel({ aoMover: mover });
 
   /** Vírgula como separador decimal, igual ao campo de peso. */
   function lerPontos(texto: string, negativo: boolean): number | null {
@@ -511,7 +726,7 @@ function FormAcao({
               checked={usaOpcoes}
               onChange={(e) => {
                 setUsaOpcoes(e.target.checked);
-                if (e.target.checked && opcoes.length === 0) setOpcoes([{ ...OPCAO_VAZIA }]);
+                if (e.target.checked && opcoes.length === 0) setOpcoes([opcaoVazia()]);
               }}
               className="size-4"
             />
@@ -628,61 +843,133 @@ function FormAcao({
 
       {usaOpcoes && (
         <div className="mt-4 space-y-2">
-          <span className="block text-sm text-tinta-2">Opções</span>
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="text-sm text-tinta-2">Opções</span>
+            {opcoes.length > 1 && (
+              <span className="text-xs text-tinta-3">
+                Arraste pela alça para mudar a ordem do dia.
+              </span>
+            )}
+          </div>
+
+          {/*
+            Cada opção em duas camadas, e não tudo numa linha: com a alça e as
+            setas somadas aos campos, o nome ficaria com uns 118px dentro da
+            janela de 32rem. Em cima o nome e o ×, embaixo os pontos — e a
+            coluna de reordenar (↑ alça ↓) de pé na esquerda, para os três
+            controles de ordem lerem como um só.
+          */}
           {opcoes.map((o, i) => (
-            <div key={o.id ?? `nova-${i}`} className="flex items-center gap-2 rounded-xl border border-borda p-2">
-              <label className="min-w-0 flex-1">
-                <span className="sr-only">Nome da opção</span>
-                <input
-                  value={o.nome}
-                  onChange={(e) => mudarOpcao(i, { nome: e.target.value })}
-                  placeholder="Marmita sem carne vermelha"
-                  maxLength={80}
-                  className="w-full rounded-lg border border-borda bg-fundo px-2 py-1.5 text-sm outline-none focus:border-destaque"
-                />
-              </label>
+            <div
+              key={o.chave}
+              ref={refDaLinha(i)}
+              className={
+                "flex items-stretch gap-2 rounded-xl border p-2 " +
+                // A linha em viagem fica destacada e sem seleção de texto: sem
+                // o `select-none` o arrasto pinta de azul meio formulário.
+                (arrastando === i
+                  ? "border-destaque bg-destaque-suave select-none"
+                  : "border-borda")
+              }
+            >
+              <div className="flex shrink-0 flex-col items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => mover(i, i - 1)}
+                  disabled={i === 0}
+                  aria-label={"Mover “" + (o.nome || "opção " + (i + 1)) + "” para cima"}
+                  className="px-1 text-xs leading-none text-tinta-3 hover:text-tinta disabled:opacity-30"
+                >
+                  ▲
+                </button>
 
-              <label className="flex w-20 items-center rounded-lg border border-borda bg-fundo px-2 focus-within:border-destaque">
-                <span className="sr-only">Pontos da opção</span>
-                <input
-                  value={o.pontos}
-                  onChange={(e) => mudarOpcao(i, { pontos: e.target.value })}
-                  inputMode="decimal"
-                  placeholder="10"
-                  className="tabular w-full bg-transparent py-1.5 text-sm outline-none"
-                />
-              </label>
+                {/*
+                  A alça é um `span`, não um `button`: ela só existe para o
+                  ponteiro, e quem chega pelo teclado reordena pelas setas acima
+                  e abaixo. Um botão focável que não responde ao Enter seria uma
+                  parada morta no caminho do Tab.
 
-              <div className="flex rounded-lg bg-fundo p-0.5 text-xs">
-                {[false, true].map((d) => (
-                  <button
-                    key={String(d)}
-                    type="button"
-                    onClick={() => mudarOpcao(i, { desconta: d })}
-                    className={
-                      "rounded px-2 py-1 " +
-                      (o.desconta === d ? "bg-superficie font-medium shadow-sm" : "text-tinta-2")
-                    }
-                  >
-                    {d ? "Desconta" : "Soma"}
-                  </button>
-                ))}
+                  `touch-none` é o que faz o arrasto funcionar no celular: sem
+                  ele o navegador entende o gesto como rolagem da página e nunca
+                  nos manda os eventos.
+                */}
+                <span
+                  {...alca(i)}
+                  aria-hidden="true"
+                  className={alca(i).className + " px-1 text-tinta-3"}
+                >
+                  ⠿
+                </span>
+
+                <button
+                  type="button"
+                  onClick={() => mover(i, i + 1)}
+                  disabled={i === opcoes.length - 1}
+                  aria-label={"Mover “" + (o.nome || "opção " + (i + 1)) + "” para baixo"}
+                  className="px-1 text-xs leading-none text-tinta-3 hover:text-tinta disabled:opacity-30"
+                >
+                  ▼
+                </button>
               </div>
 
-              <button
-                type="button"
-                onClick={() => setOpcoes((atuais) => atuais.filter((_, j) => j !== i))}
-                aria-label={"Tirar a opção " + (o.nome || i + 1)}
-                className="px-1 text-lg leading-none text-tinta-3 hover:text-perigo"
-              >
-                ×
-              </button>
+              <div className="min-w-0 flex-1 space-y-2">
+                <div className="flex items-center gap-2">
+                  <label className="min-w-0 flex-1">
+                    <span className="sr-only">Nome da opção</span>
+                    <input
+                      value={o.nome}
+                      onChange={(e) => mudarOpcao(i, { nome: e.target.value })}
+                      placeholder="Marmita sem carne vermelha"
+                      maxLength={80}
+                      className="w-full rounded-lg border border-borda bg-fundo px-2 py-1.5 text-sm outline-none focus:border-destaque"
+                    />
+                  </label>
+
+                  <button
+                    type="button"
+                    onClick={() => setOpcoes((atuais) => atuais.filter((_, j) => j !== i))}
+                    aria-label={"Tirar a opção " + (o.nome || i + 1)}
+                    className="shrink-0 px-1 text-lg leading-none text-tinta-3 hover:text-perigo"
+                  >
+                    ×
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <label className="flex w-20 items-center rounded-lg border border-borda bg-fundo px-2 focus-within:border-destaque">
+                    <span className="sr-only">Pontos da opção</span>
+                    <input
+                      value={o.pontos}
+                      onChange={(e) => mudarOpcao(i, { pontos: e.target.value })}
+                      inputMode="decimal"
+                      placeholder="10"
+                      className="tabular w-full bg-transparent py-1.5 text-sm outline-none"
+                    />
+                  </label>
+
+                  <div className="flex rounded-lg bg-fundo p-0.5 text-xs">
+                    {[false, true].map((d) => (
+                      <button
+                        key={String(d)}
+                        type="button"
+                        onClick={() => mudarOpcao(i, { desconta: d })}
+                        className={
+                          "rounded px-2 py-1 " +
+                          (o.desconta === d ? "bg-superficie font-medium shadow-sm" : "text-tinta-2")
+                        }
+                      >
+                        {d ? "Desconta" : "Soma"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
             </div>
           ))}
 
           <button
             type="button"
-            onClick={() => setOpcoes((atuais) => [...atuais, { ...OPCAO_VAZIA }])}
+            onClick={() => setOpcoes((atuais) => [...atuais, opcaoVazia()])}
             className="w-full rounded-xl border border-dashed border-borda py-2 text-sm text-tinta-2"
           >
             Adicionar opção

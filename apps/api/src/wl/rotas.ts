@@ -156,6 +156,23 @@ const CorpoAcao = z
     path: ["repetivel"],
   });
 
+/**
+ * O que a tela manda ao arrastar uma ação de lugar: só id e ordem, da lista
+ * inteira. Renumerar todo mundo de uma vez é o que evita empates — as ações
+ * nascem com `ordem` 0 e, sem isto, a lista dependeria do desempate por nome.
+ */
+const CorpoOrdemAcoes = z.object({
+  ordens: z
+    .array(
+      z.object({
+        id: z.number().int().min(1),
+        ordem: z.number().int().min(0).max(999),
+      }),
+    )
+    .min(1, "mande ao menos uma ação")
+    .max(500, "ações demais de uma vez"),
+});
+
 /*
  * Quantidade zero é o pedido para apagar o registro — a mesma rota marca,
  * corrige e desmarca. `opcaoId` só vale nas ações que têm opções.
@@ -501,6 +518,43 @@ export async function rotasWl(app: FastifyInstance) {
       return tx.wlAcao.findUniqueOrThrow({ where: { id: criada.id }, include: COM_OPCOES });
     });
     return reply.code(201).send(acaoParaJson(acao));
+  });
+
+  /*
+   * Só a ordem das ações, e de várias de uma vez.
+   *
+   * Rota própria e não um PUT /acoes/:id por ação: aquele exige o corpo
+   * inteiro e, de quebra, roda `salvarOpcoes` e `salvarGruposDaAcao` — que
+   * apagam ou arquivam o que não vier junto. Arrastar uma ação não tem nada
+   * que mexer nas opções dela, e um reordenamento viraria N reconciliações.
+   *
+   * O caminho estático ganha de `/acoes/:id` no roteador do Fastify, então
+   * "ordem" nunca é lido como id.
+   */
+  app.put("/acoes/ordem", async (req, reply) => {
+    const corpo = CorpoOrdemAcoes.safeParse(req.body);
+    if (!corpo.success) return reply.code(400).send({ erro: primeiroErro(corpo.error) });
+
+    const { ordens } = corpo.data;
+    const ids = ordens.map((o) => o.id);
+    if (new Set(ids).size !== ids.length) {
+      return reply.code(400).send({ erro: "A mesma ação apareceu duas vezes." });
+    }
+
+    const achadas = await prisma.wlAcao.count({ where: { id: { in: ids } } });
+    if (achadas !== ids.length) return reply.code(404).send({ erro: "Ação não encontrada." });
+
+    // Numa transação só: a lista meio renumerada mostraria uma ordem que nunca
+    // foi pedida, e o próximo arrasto partiria dela.
+    await prisma.$transaction(
+      ordens.map((o) => prisma.wlAcao.update({ where: { id: o.id }, data: { ordem: o.ordem } })),
+    );
+
+    const acoes = await prisma.wlAcao.findMany({
+      orderBy: [{ ordem: "asc" }, { nome: "asc" }],
+      include: COM_OPCOES,
+    });
+    return acoes.map(acaoParaJson);
   });
 
   // Mudar os pontos vale de hoje em diante. Os dias já registrados guardam o

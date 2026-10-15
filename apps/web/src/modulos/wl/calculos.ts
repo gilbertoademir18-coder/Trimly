@@ -291,6 +291,61 @@ export function ordenarAcoes(acoes: Acao[]): Acao[] {
 }
 
 /**
+ * Tira o item de uma posição e encaixa na outra, devolvendo uma lista nova.
+ *
+ * É o que está por trás de arrastar as opções de uma ação: a ordem no banco sai
+ * da posição no array que o formulário manda, então reordenar aqui é reordenar
+ * lá — não há campo de ordem para preencher.
+ *
+ * Índice fora da faixa devolve a lista como estava, em vez de embaralhar: um
+ * arrasto pode pedir uma posição que a lista já não tem, se uma linha saiu no
+ * meio do gesto.
+ */
+export function reordenar<T>(lista: T[], de: number, para: number): T[] {
+  if (de === para) return lista;
+  if (de < 0 || de >= lista.length) return lista;
+  if (para < 0 || para >= lista.length) return lista;
+
+  const copia = [...lista];
+  const [item] = copia.splice(de, 1);
+  if (item === undefined) return lista;
+  copia.splice(para, 0, item);
+  return copia;
+}
+
+/**
+ * Reordena só os itens que passam no `pertence`, deixando os outros parados.
+ *
+ * É o que a tela de ações precisa: ela mostra uma lista só do banco repartida
+ * em seções calculadas (com opções, positivas, negativas, arquivadas), e
+ * arrastar dentro de uma seção não pode mexer nas outras. `de` e `para` são
+ * posições DENTRO da seção; o resultado é a lista inteira na ordem nova.
+ *
+ * A ideia: os itens da seção ocupam um conjunto de vagas na lista completa, e
+ * reordenar é só trocar quem senta em qual vaga. Quem está fora não sai do
+ * lugar nem muda de vizinho.
+ */
+export function reordenarSubconjunto<T>(
+  lista: T[],
+  pertence: (item: T) => boolean,
+  de: number,
+  para: number,
+): T[] {
+  const vagas: number[] = [];
+  for (const [i, item] of lista.entries()) if (pertence(item)) vagas.push(i);
+
+  const dentro = vagas.map((i) => lista[i] as T);
+  const movido = reordenar(dentro, de, para);
+  // `reordenar` devolve a MESMA lista quando não há o que fazer (índice fora da
+  // faixa, origem igual ao destino): aí não há por que recriar a de fora.
+  if (movido === dentro) return lista;
+
+  const copia = [...lista];
+  for (const [k, vaga] of vagas.entries()) copia[vaga] = movido[k] as T;
+  return copia;
+}
+
+/**
  * A nota do dia, de 0 a 100.
  *
  * `null` quando não há o que medir: nenhum dia registrado, ou um cadastro sem
