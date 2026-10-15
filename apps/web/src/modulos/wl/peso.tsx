@@ -175,7 +175,12 @@ export function PaginaPeso() {
               <section className="grid grid-cols-2 gap-3">
                 {/*
                   As duas pontas lado a lado e do mesmo tamanho: elas se leem como
-                  um par (de tanto para tanto), e destacar só uma desfaria a leitura.
+                  um par, e destacar só uma desfaria a leitura.
+
+                  O último vem primeiro. Ele é a resposta à pergunta que se faz ao
+                  abrir a tela — em quanto estou, ou em quanto parei —, e o primeiro
+                  peso é o contexto que a explica. Num idioma que se lê da esquerda
+                  para a direita, o canto de cima à esquerda é onde o olho cai.
 
                   "Último peso" e não "Peso atual", que era o rótulo antigo: dos dez
                   projetos, nove terminaram há anos, e chamar de atual o peso de
@@ -185,15 +190,15 @@ export function PaginaPeso() {
                   faria pensar neste ano.
                 */}
                 <Numero
-                  rotulo="Primeiro peso"
-                  valor={`${formatarPeso(resumo.inicial.pesoKg)} kg`}
-                  detalhe={`em ${formatarDia(resumo.inicial.dia, true)}`}
-                  grande
-                />
-                <Numero
                   rotulo="Último peso"
                   valor={`${formatarPeso(resumo.atual.pesoKg)} kg`}
                   detalhe={`em ${formatarDia(resumo.atual.dia, true)}`}
+                  grande
+                />
+                <Numero
+                  rotulo="Primeiro peso"
+                  valor={`${formatarPeso(resumo.inicial.pesoKg)} kg`}
+                  detalhe={`em ${formatarDia(resumo.inicial.dia, true)}`}
                   grande
                 />
                 {/*
