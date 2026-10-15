@@ -15,6 +15,27 @@
 - Scripts `.ps1` precisam ser salvos em UTF-8 **com BOM**, senão o PowerShell 5.1 estraga os acentos.
 - Antes de concluir: `npm run typecheck` e `npm test`.
 
+# Git
+
+**Commite e dê push sem perguntar.** Sou o único que desenvolve e o único que
+usa o app: não há ninguém para revisar antes, e trabalho pronto parado na
+árvore não ajuda nada.
+
+- Direto na `main`. Nada de branch nem de PR — a história é linear e é só minha.
+- Um commit por assunto. Se o trabalho mexeu em duas coisas que se explicam
+  separado, são dois commits, mesmo que caiam no mesmo arquivo.
+- Mensagem em português, no feitio das que já estão lá: título curto no
+  imperativo e um corpo que conta **por que** ficou assim, não o que o diff já
+  mostra. Termine com a linha `Co-Authored-By`.
+- Diga na mensagem o que **não** foi verificado. É o que me avisa, meses
+  depois, que aquele commit nunca passou por um navegador ou por um banco.
+- Verifique antes de commitar, não depois: `npm run typecheck` e `npm test`.
+  Commit que não compila é pior que commit nenhum.
+- O push automático vale para commit novo. **Reescrever o que já subiu não**:
+  nada de `--force`, `rebase` do que já foi empurrado ou `commit --amend` em
+  commit publicado — para isso, pergunte.
+- Nunca `--no-verify`. Se um hook reclamar, o problema é o que ele apontou.
+
 # Banco de dados
 
 **Os dados são do usuário. Não escreva neles.**
