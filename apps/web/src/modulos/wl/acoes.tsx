@@ -6,6 +6,7 @@ import { AcaoDaPagina } from "../../layout.tsx";
 import { Aviso } from "./aviso.tsx";
 import {
   diaLocal,
+  formatarDia,
   opcoesAtivas,
   pontosPossiveis,
   reordenar,
@@ -78,16 +79,17 @@ export function PaginaAcoes() {
    * O cadastro mudou: o dia de hoje é reprecificado no servidor, porque ele
    * ainda está sendo vivido — mudar quanto vale um hábito ao meio-dia vale para
    * o dia inteiro. Os dias futuros já planejados vão junto (o servidor cuida
-   * disso). Os passados ficam como estão: eles só são reavaliados se você
-   * reabrir um deles e mexer.
+   * disso). Os passados ficam como estão, a não ser que o formulário diga que
+   * a mudança vale desde uma data anterior — aí `desde` é essa data, e o
+   * servidor refaz a foto de todo dia gravado a partir dela.
    *
    * Isto morava em `pagina.tsx`, que era quem abria a modal. Agora que o
    * cadastro é um destino, a reprecificação vem com ele: voltar para `/wl`
    * remonta a tela do dia, que busca o dia já reprecificado.
    */
-  const aoMudarCadastro = useCallback(async () => {
+  const aoMudarCadastro = useCallback(async (desde: string = diaLocal()) => {
     try {
-      await wlApi.refotografar(diaLocal());
+      await wlApi.refotografar(desde);
     } catch (e) {
       setErro((e as Error).message);
     }
@@ -302,9 +304,9 @@ export function PaginaAcoes() {
         <FormAcao
           acao={edicao?.acao ?? null}
           grupos={gruposAtivos}
-          aoSalvar={async () => {
+          aoSalvar={async (desde) => {
             setEdicao(null);
-            await aoMudarCadastro();
+            await aoMudarCadastro(desde);
           }}
           aoCancelar={() => setEdicao(null)}
         />
@@ -562,9 +564,11 @@ function FormAcao({
 }: {
   acao: Acao | null;
   grupos: Grupo[];
-  aoSalvar: () => Promise<void>;
+  /** Recebe o dia a partir do qual a mudança vale. */
+  aoSalvar: (desde: string) => Promise<void>;
   aoCancelar?: () => void;
 }) {
+  const hoje = diaLocal();
   const [nome, setNome] = useState(acao?.nome ?? "");
   const [desconta, setDesconta] = useState((acao?.pontos ?? 1) < 0);
   const [pontos, setPontos] = useState(acao?.pontos === null ? "" : String(Math.abs(acao?.pontos ?? 0) || ""));
@@ -586,6 +590,38 @@ function FormAcao({
   const [emGrupos, setEmGrupos] = useState<number[]>(acao?.grupos ?? []);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+
+  /*
+   * Desde quando a mudança vale. Hoje é o padrão, e mantém o passado parado:
+   * um hábito novo não deve rebaixar dias que já foram vividos sem ele. Uma
+   * data anterior é para quando o hábito já existia e só faltava cadastrar —
+   * ou quando o valor estava errado desde o começo.
+   */
+  const [desde, setDesde] = useState(hoje);
+  const noPassado = desde !== "" && desde < hoje;
+
+  /*
+   * Quantos dias com marcação a escolha vai recalcular, para o aviso dizer o
+   * tamanho do estrago antes de salvar. `null` enquanto não se sabe — o aviso
+   * aparece mesmo assim, só sem o número.
+   */
+  const [afetados, setAfetados] = useState<number | null>(null);
+
+  useEffect(() => {
+    setAfetados(null);
+    if (!noPassado) return;
+    // A data pode mudar de novo antes de a resposta chegar; a velha não vale.
+    let valendo = true;
+    wlApi
+      .dias(desde, hoje)
+      .then((dias) => {
+        if (valendo) setAfetados(dias.filter((d) => d.data < hoje).length);
+      })
+      .catch(() => {});
+    return () => {
+      valendo = false;
+    };
+  }, [desde, hoje, noPassado]);
 
   function alternarGrupo(id: number) {
     setEmGrupos((atuais) => (atuais.includes(id) ? atuais.filter((x) => x !== id) : [...atuais, id]));
@@ -687,12 +723,19 @@ function FormAcao({
       };
     }
 
+    // O campo de data deixa digitar o futuro mesmo com `max`; o servidor
+    // aceitaria, e os dias entre hoje e a data ficariam com a foto velha.
+    if (desde > hoje) {
+      setErro("“Vale a partir de” não pode ser depois de hoje.");
+      return;
+    }
+
     setSalvando(true);
     setErro(null);
     try {
       if (acao) await wlApi.salvarAcao(acao.id, corpo);
       else await wlApi.criarAcao(corpo);
-      await aoSalvar();
+      await aoSalvar(desde || hoje);
     } catch (e) {
       setErro((e as Error).message);
     } finally {
@@ -983,6 +1026,40 @@ function FormAcao({
           </button>
         </div>
       )}
+
+      {/*
+        Depois de tudo, logo antes de salvar: é uma pergunta sobre a mudança
+        inteira, e não sobre um campo.
+      */}
+      <div className="mt-4">
+        <label className="flex flex-wrap items-center gap-2 text-sm text-tinta-2">
+          Vale a partir de
+          <input
+            type="date"
+            value={desde}
+            max={hoje}
+            onChange={(e) => setDesde(e.target.value)}
+            className="tabular rounded-lg border border-borda bg-fundo px-2 py-1 outline-none focus:border-destaque"
+          />
+          {desde !== hoje && (
+            <button type="button" onClick={() => setDesde(hoje)} className="text-xs text-destaque">
+              hoje
+            </button>
+          )}
+        </label>
+        {noPassado && (
+          <span className="mt-1 block text-xs text-atencao">
+            {afetados === null
+              ? "Os dias desde " + formatarDia(desde) + " serão recalculados"
+              : afetados === 0
+                ? "Nenhum dia marcado desde " + formatarDia(desde) + " — nada muda no passado"
+                : afetados === 1
+                  ? "1 dia passado será recalculado"
+                  : afetados + " dias passados serão recalculados"}
+            {afetados !== 0 && " com o cadastro novo. A nota deles pode mudar."}
+          </span>
+        )}
+      </div>
 
       {erro && <p className="mt-2 text-sm text-perigo">{erro}</p>}
 

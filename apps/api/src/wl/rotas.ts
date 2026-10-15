@@ -858,6 +858,11 @@ export async function rotasWl(app: FastifyInstance) {
    * Os dias depois dele vão junto: um dia futuro já planejado (grupo escolhido,
    * algo marcado) ainda nem começou, e tem que chegar com o cadastro de agora.
    *
+   * O dia também pode ser do passado, quando o formulário da ação diz que a
+   * mudança "vale a partir de" uma data anterior — o hábito já existia e só
+   * faltava cadastrar. Aí todo dia gravado desde essa data é refotografado, e
+   * a nota dele passa a ser a do cadastro de agora.
+   *
    * Não muda o que foi marcado, só o quanto vale. Repetir é inofensivo.
    */
   app.post<{ Params: { dia: string } }>("/dias/:dia/refotografar", async (req, reply) => {

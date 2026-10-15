@@ -80,13 +80,13 @@ export const wlApi = {
    */
   marcar: (dia: string, acaoId: number, quantidade: number, opcaoId: number | null = null) =>
     api<Dia>(`/wl/dias/${dia}/acoes/${acaoId}`, { method: "PUT", corpo: { quantidade, opcaoId } }),
-  /**
-   * Reprecifica um dia com o cadastro de agora: não muda o que foi marcado,
-   * só quanto vale. Repetir é inofensivo.
-   */
   /** Escolhe, troca ou tira (null) o grupo do dia. Devolve o dia inteiro. */
   escolherGrupo: (dia: string, grupoId: number | null) =>
     api<Dia>("/wl/dias/" + dia + "/grupo", { method: "PUT", corpo: { grupoId } }),
+  /**
+   * Reprecifica um dia com o cadastro de agora, e todo dia gravado depois
+   * dele: não muda o que foi marcado, só quanto vale. Repetir é inofensivo.
+   */
   refotografar: (dia: string) => api<Dia>(`/wl/dias/${dia}/refotografar`, { method: "POST" }),
 
   /** O jejum em andamento, ou `null`. */
