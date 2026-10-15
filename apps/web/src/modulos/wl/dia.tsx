@@ -42,8 +42,13 @@ export function CartaoDoDia({
   versaoCadastro: number;
   aoMudar?: () => void;
   /*
-   * As ações saíram daqui: viraram tela (`/wl/acoes`) e os caminhos para elas
-   * são `Link`. Grupos segue modal, e por isso segue como função.
+   * Abre a janela de grupos. Sobrou de uso num caso só: o cartão sem grupo
+   * nenhum cadastrado, que sem isso seria um beco — ele explica que é preciso
+   * um grupo e não daria por onde criá-lo.
+   *
+   * Os atalhos do rodapé que também a usavam saíram: a tela já oferece Ações e
+   * Grupos nos cartões de navegação, e repeti-los aqui era dizer a mesma coisa
+   * duas vezes na mesma dobra.
    */
   aoAbrirGrupos: () => void;
 }) {
@@ -208,14 +213,6 @@ export function CartaoDoDia({
         ))}
       </ul>
 
-      <div className="mt-3 flex gap-4">
-        <Link to="/wl/acoes" className="text-sm text-tinta-2 hover:text-tinta">
-          Gerenciar ações
-        </Link>
-        <button type="button" onClick={aoAbrirGrupos} className="text-sm text-tinta-2 hover:text-tinta">
-          Grupos
-        </button>
-      </div>
     </Cartao>
   );
 }
