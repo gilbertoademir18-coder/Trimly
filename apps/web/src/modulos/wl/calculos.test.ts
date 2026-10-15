@@ -3,7 +3,6 @@ import {
   diaLocal,
   diasDoProjeto,
   faixaDaPontuacao,
-  filtrarPeriodo,
   formatarDias,
   formatarImc,
   formatarVariacao,
@@ -174,42 +173,6 @@ describe("formatarImc", () => {
   });
 });
 
-describe("filtrarPeriodo", () => {
-  const serie = [p("2026-06-01", 90), p("2026-09-05", 86), p("2026-09-30", 85)];
-
-  it("corta pelos últimos N dias a partir da âncora", () => {
-    expect(filtrarPeriodo(serie, "30d", "2026-09-30").map((x) => x.dia)).toEqual(["2026-09-05", "2026-09-30"]);
-    expect(filtrarPeriodo(serie, "tudo", "2026-09-30")).toHaveLength(3);
-  });
-
-  it("a âncora é a última pesagem, não o dia de hoje", () => {
-    /*
-     * O bug que isto tranca: o gráfico de todo projeto encerrado aparecia vazio.
-     *
-     * A âncora era a data de hoje, então a janela de 90 dias não pegava nenhuma
-     * pesagem de um projeto de 2019 — e o gráfico dizia “nenhuma pesagem neste
-     * período” tendo dezenas em mão. Ancorada na última pesagem, a janela passa
-     * a significar "os últimos 90 dias DESTE projeto".
-     */
-    const de2019 = [p("2019-01-10", 80), p("2019-03-01", 78), p("2019-03-20", 77)];
-
-    expect(filtrarPeriodo(de2019, "30d", "2019-03-20").map((x) => x.dia)).toEqual([
-      "2019-03-01",
-      "2019-03-20",
-    ]);
-    expect(filtrarPeriodo(de2019, "90d", "2019-03-20")).toHaveLength(3);
-
-    // Ancorado em hoje, como era antes: nada. É o gráfico vazio que apareceu.
-    expect(filtrarPeriodo(de2019, "90d", "2026-10-15")).toEqual([]);
-  });
-
-  it("projeto mais curto que a janela não é recortado", () => {
-    // Não há o que esconder, e devolver menos seria esconder.
-    const curto = [p("2022-03-12", 70), p("2022-04-03", 66.9)];
-    expect(filtrarPeriodo(curto, "30d", "2022-04-03")).toHaveLength(2);
-  });
-});
-
 describe("várias pesagens no mesmo dia", () => {
   /*
    * O caso que o modelo passou a permitir: pesar de manhã e de novo à noite.
@@ -235,20 +198,14 @@ describe("várias pesagens no mesmo dia", () => {
     expect(resumir(doisNoDia, null)!.variacao).toBeCloseTo(-3.6, 10);
   });
 
-  it("o filtro de período leva as duas do mesmo dia ou nenhuma", () => {
-    // O recorte é por dia: duas pesagens do mesmo dia nunca se separam, porque
-    // é o `dia` que entra na comparação e ele é igual nas duas.
-    const trinta = filtrarPeriodo(doisNoDia, "30d", "2026-09-30");
-    expect(trinta).toHaveLength(2);
-    expect(trinta.map((x) => x.dia)).toEqual(["2026-09-30", "2026-09-30"]);
-  });
 
   it("uma pesagem tardia não muda o dia a que ela pertence", () => {
     // 22h em fuso negativo já é o dia seguinte em UTC. O `dia` é guardado à
-    // parte justamente para não depender disso.
+    // parte justamente para não depender disso — e é por ele que o calendário
+    // e os recortes de projeto perguntam.
     const tardia = p("2026-09-30", 85, { hora: "22:30" });
     expect(tardia.dia).toBe("2026-09-30");
-    expect(filtrarPeriodo([tardia], "30d", "2026-09-30")).toHaveLength(1);
+    expect(tardia.medidoEm.slice(0, 10)).not.toBe(tardia.dia);
   });
 });
 
