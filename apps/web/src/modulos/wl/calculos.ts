@@ -80,6 +80,26 @@ export function formatarHora(iso: string): string {
   return new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 }
 
+/*
+ * Quantas libras cabem num quilo.
+ *
+ * O valor exato da definição internacional (uma libra é 0,45359237 kg, por
+ * acordo de 1959 — não é aproximação). Escrito por extenso em vez de 2,2046
+ * para a conta não acumular erro no caminho: 95,9 kg com o valor cortado já
+ * sai meio décimo errado.
+ */
+const LIBRAS_POR_KG = 1 / 0.45359237;
+
+/**
+ * O mesmo peso em libras. `95.9` → `211.42…`.
+ *
+ * Devolve o número e não o texto: quem formata é `formatarPeso`, o mesmo das
+ * duas unidades. Assim a casa decimal e a vírgula são decididas num lugar só.
+ */
+export function emLibras(kg: number): number {
+  return kg * LIBRAS_POR_KG;
+}
+
 /** 72.5 → `"72,5"`; 72 → `"72,0"`. Uma casa: a balança de casa não vê mais que isso. */
 export function formatarPeso(kg: number): string {
   return kg.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });

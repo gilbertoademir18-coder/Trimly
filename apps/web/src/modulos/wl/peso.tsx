@@ -8,6 +8,7 @@ import {
   diaLocal,
   diasDoProjeto,
   doCampoLocal,
+  emLibras,
   formatarDia,
   formatarDias,
   formatarHora,
@@ -186,12 +187,14 @@ export function PaginaPeso() {
                 <Numero
                   rotulo="Último registro"
                   valor={`${formatarPeso(resumo.atual.pesoKg)} kg`}
+                  segundo={`${formatarPeso(emLibras(resumo.atual.pesoKg))} lb`}
                   detalhe={pontaEm(resumo.atual, perfil?.alturaCm ?? null)}
                   grande
                 />
                 <Numero
                   rotulo="Primeiro registro"
                   valor={`${formatarPeso(resumo.inicial.pesoKg)} kg`}
+                  segundo={`${formatarPeso(emLibras(resumo.inicial.pesoKg))} lb`}
                   detalhe={pontaEm(resumo.inicial, perfil?.alturaCm ?? null)}
                   grande
                 />
@@ -546,11 +549,37 @@ function pontaEm(pesagem: Pesagem, alturaCm: number | null): string {
   return valor === null ? data : `${data} · IMC ${formatarImc(valor)}`;
 }
 
-function Numero({ rotulo, valor, detalhe, grande }: { rotulo: string; valor: string; detalhe: string; grande?: boolean }) {
+function Numero({
+  rotulo,
+  valor,
+  segundo,
+  detalhe,
+  grande,
+}: {
+  rotulo: string;
+  valor: string;
+  /*
+   * O mesmo número noutra unidade, miúdo e ao lado do principal.
+   *
+   * Na mesma linha e não embaixo: são o MESMO peso dito duas vezes, e separá-
+   * los em linhas faria parecerem duas medidas. O tamanho menor é o que diz
+   * qual das duas manda.
+   */
+  segundo?: string;
+  detalhe: string;
+  grande?: boolean;
+}) {
   return (
     <div className="rounded-2xl border border-borda bg-superficie p-4">
       <div className="text-sm text-tinta-2">{rotulo}</div>
-      <div className={`tabular mt-1 font-semibold tracking-tight ${grande ? "text-3xl" : "text-2xl"}`}>{valor}</div>
+      <div className="mt-1 flex items-baseline gap-1.5">
+        <span
+          className={`tabular font-semibold tracking-tight ${grande ? "text-3xl" : "text-2xl"}`}
+        >
+          {valor}
+        </span>
+        {segundo && <span className="tabular text-sm text-tinta-3">{segundo}</span>}
+      </div>
       <div className="mt-0.5 text-xs text-tinta-3">{detalhe}</div>
     </div>
   );
@@ -658,6 +687,9 @@ function Historico({
                   */}
                   <span className="ml-1.5 text-xs text-tinta-3">{formatarHora(p.medidoEm)}</span>
                   <span className="ml-3 font-medium">{formatarPeso(p.pesoKg)} kg</span>
+                  <span className="ml-1.5 text-xs text-tinta-3">
+                    {formatarPeso(emLibras(p.pesoKg))} lb
+                  </span>
                   {anterior && <span className="ml-2 text-xs text-tinta-3">{formatarVariacao(p.pesoKg - anterior.pesoKg)}</span>}
                 </div>
                 {p.nota && <div className="truncate text-xs text-tinta-3">{p.nota}</div>}

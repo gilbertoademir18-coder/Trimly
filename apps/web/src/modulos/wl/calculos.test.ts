@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   diaLocal,
   diasDoProjeto,
+  emLibras,
   faixaDaPontuacao,
   formatarDias,
   formatarImc,
+  formatarPeso,
   formatarVariacao,
   imc,
   lerPeso,
@@ -93,6 +95,43 @@ describe("lerPeso", () => {
     expect(lerPeso("72,555")).toBeNull();
     expect(lerPeso("-70")).toBeNull();
     expect(lerPeso("1.000")).toBeNull();
+  });
+});
+
+describe("emLibras", () => {
+  it("converte pelo valor exato da definição", () => {
+    // Uma libra é 0,45359237 kg por acordo internacional, não por arredondamento.
+    expect(emLibras(1)).toBeCloseTo(2.2046226218, 9);
+    expect(emLibras(0.45359237)).toBeCloseTo(1, 12);
+  });
+
+  it("converte os pesos que estão na tela", () => {
+    expect(emLibras(95.9)).toBeCloseTo(211.42, 2);
+    expect(emLibras(62.6)).toBeCloseTo(138.01, 2);
+  });
+
+  it("zero continua zero, e a conta é proporcional", () => {
+    expect(emLibras(0)).toBe(0);
+    expect(emLibras(200)).toBeCloseTo(2 * emLibras(100), 9);
+  });
+
+  it("o valor cortado em 2,2046 erraria o que a tela mostra", () => {
+    /*
+     * Por que a constante é escrita como `1 / 0.45359237` e não como 2,2046.
+     *
+     * Com quatro casas, 95,9 kg dá 211,4211 lb; com o valor exato, 211,4231. A
+     * tela mostra uma casa decimal, então a diferença não aparece HOJE — mas
+     * aparece em qualquer peso que caia perto da virada do arredondamento, e
+     * descobrir isso por um décimo errado no histórico seria pior.
+     */
+    const cortado = 95.9 * 2.2046;
+    expect(Math.abs(emLibras(95.9) - cortado)).toBeGreaterThan(0.001);
+  });
+
+  it("formata com a mesma regra do quilo", () => {
+    // Uma casa e vírgula, pela mesma função — a unidade muda, o feitio não.
+    expect(formatarPeso(emLibras(95.9))).toBe("211,4");
+    expect(formatarPeso(emLibras(100))).toBe("220,5");
   });
 });
 
