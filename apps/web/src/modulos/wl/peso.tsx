@@ -173,16 +173,39 @@ export function PaginaPeso() {
           {resumo ? (
             <>
               <section className="grid grid-cols-2 gap-3">
+                {/*
+                  As duas pontas lado a lado e do mesmo tamanho: elas se leem como
+                  um par (de tanto para tanto), e destacar só uma desfaria a leitura.
+
+                  "Último peso" e não "Peso atual", que era o rótulo antigo: dos dez
+                  projetos, nove terminaram há anos, e chamar de atual o peso de
+                  junho de 2019 era simplesmente falso.
+
+                  O ano vai nas duas datas. Sem ele, "em 30/06" num projeto de 2019
+                  faria pensar neste ano.
+                */}
                 <Numero
-                  rotulo="Peso atual"
-                  valor={`${formatarPeso(resumo.atual.pesoKg)} kg`}
-                  detalhe={`em ${formatarDia(resumo.atual.dia)}`}
+                  rotulo="Primeiro peso"
+                  valor={`${formatarPeso(resumo.inicial.pesoKg)} kg`}
+                  detalhe={`em ${formatarDia(resumo.inicial.dia, true)}`}
                   grande
                 />
                 <Numero
+                  rotulo="Último peso"
+                  valor={`${formatarPeso(resumo.atual.pesoKg)} kg`}
+                  detalhe={`em ${formatarDia(resumo.atual.dia, true)}`}
+                  grande
+                />
+                {/*
+                  O detalhe virou a duração, e não mais "desde tal dia": a data de
+                  início agora está no card ao lado, e repeti-la aqui gastaria a
+                  linha com o que já se vê. A duração diz EM QUANTO TEMPO a variação
+                  aconteceu, que é o que falta para ela significar algo.
+                */}
+                <Numero
                   rotulo="Desde o início"
                   valor={`${formatarVariacao(resumo.variacao)} kg`}
-                  detalhe={`desde ${formatarDia(resumo.inicial.dia, true)}`}
+                  detalhe={`em ${formatarDias(diasDoProjeto(emFoco)!)}`}
                 />
                 {resumo.faltam !== null && (
                   <Numero
