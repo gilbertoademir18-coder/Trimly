@@ -6,6 +6,7 @@ import { AcaoDaPagina } from "../../layout.tsx";
 import { Aviso } from "./aviso.tsx";
 import {
   diaLocal,
+  ehChecklist,
   formatarDia,
   opcoesAtivas,
   pontosPossiveis,
@@ -155,6 +156,7 @@ export function PaginaAcoes() {
   const comOpcoes = ativas.filter(temOpcoes);
   const positivas = ativas.filter((a) => !temOpcoes(a) && (a.pontos ?? 0) > 0);
   const negativas = ativas.filter((a) => !temOpcoes(a) && (a.pontos ?? 0) < 0);
+  const checklist = ativas.filter(ehChecklist);
   const arquivadas = acoes.filter((a) => !a.ativa);
   const gruposAtivos = grupos.filter((g) => g.ativo);
   // Ação fora de grupo não aparece em dia nenhum — e é fácil criar uma e
@@ -239,6 +241,22 @@ export function PaginaAcoes() {
         }
         aoLargar={() => void gravarOrdem()}
       />
+
+      {/*
+        Por último entre as ativas, e só quando existe: o checklist não mexe na
+        nota, e uma seção vazia aqui pediria um cadastro que é opcional.
+      */}
+      {checklist.length > 0 && (
+        <Secao
+          titulo="Checklist"
+          vazio=""
+          acoes={checklist}
+          aoEditar={abrirEdicao}
+          aoMexer={mexer}
+          aoReordenar={(de, para) => moverNaSecao((a) => a.ativa && ehChecklist(a), de, para)}
+          aoLargar={() => void gravarOrdem()}
+        />
+      )}
 
       {/*
         Arquivadas sem reordenar: elas não aparecem em dia nenhum, então a
@@ -434,7 +452,9 @@ function Linha({
 
   const resumo = temOpcoes(acao)
     ? `${opcoesAtivas(acao).length} ${opcoesAtivas(acao).length === 1 ? "opção" : "opções"}`
-    : `${(acao.pontos ?? 0) > 0 ? "+" : "−"}${Math.abs(acao.pontos ?? 0)} pts` +
+    : (ehChecklist(acao)
+        ? "checklist, sem pontos"
+        : `${(acao.pontos ?? 0) > 0 ? "+" : "−"}${Math.abs(acao.pontos ?? 0)} pts`) +
       (acao.repetivel ? ` · até ${acao.alvoDiario}× por dia` : "");
 
   return (
@@ -575,6 +595,9 @@ function FormAcao({
   const [repetivel, setRepetivel] = useState(acao?.repetivel ?? false);
   const [alvo, setAlvo] = useState(String(acao?.alvoDiario ?? 1));
   const [usaOpcoes, setUsaOpcoes] = useState(acao ? temOpcoes(acao) : false);
+  // Checklist e opções se excluem: as opções existem para dar pontos
+  // diferentes a cada escolha, e o checklist não dá ponto nenhum.
+  const [soChecklist, setSoChecklist] = useState(acao ? ehChecklist(acao) : false);
   const [opcoes, setOpcoes] = useState<OpcaoForm[]>(() =>
     (acao?.opcoes ?? []).map((o) => ({
       // As que vêm do banco já têm identidade própria; o prefixo só evita
@@ -700,7 +723,7 @@ function FormAcao({
         grupos: emGrupos,
       };
     } else {
-      const valor = lerPontos(pontos, desconta);
+      const valor = soChecklist ? 0 : lerPontos(pontos, desconta);
       if (valor === null) {
         setErro("Quantos pontos a ação vale? Use um número como 3 ou 2,5.");
         return;
@@ -776,11 +799,25 @@ function FormAcao({
               checked={usaOpcoes}
               onChange={(e) => {
                 setUsaOpcoes(e.target.checked);
+                if (e.target.checked) setSoChecklist(false);
                 if (e.target.checked && opcoes.length === 0) setOpcoes([opcaoVazia()]);
               }}
               className="size-4"
             />
             Tem opções (escolho uma por dia)
+          </label>
+
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={soChecklist}
+              onChange={(e) => {
+                setSoChecklist(e.target.checked);
+                if (e.target.checked) setUsaOpcoes(false);
+              }}
+              className="size-4"
+            />
+            Só checklist (não conta na pontuação)
           </label>
         </div>
 
@@ -792,37 +829,44 @@ function FormAcao({
             </p>
           ) : (
             <>
-              <div>
-                <span className="mb-1 block text-sm text-tinta-2">Pontos</span>
-                <div className="flex gap-2">
-                  <label className="flex flex-1 items-center rounded-xl border border-borda bg-fundo px-3 focus-within:border-destaque">
-                    <span className="sr-only">Pontos</span>
-                    <input
-                      value={pontos}
-                      onChange={(e) => setPontos(e.target.value)}
-                      inputMode="decimal"
-                      placeholder="3"
-                      className="tabular w-full bg-transparent py-2.5 outline-none"
-                    />
-                    <span className="text-sm text-tinta-3">pts</span>
-                  </label>
-                  <div className="flex rounded-xl bg-fundo p-0.5 text-sm">
-                    {[false, true].map((d) => (
-                      <button
-                        key={String(d)}
-                        type="button"
-                        onClick={() => setDesconta(d)}
-                        className={
-                          "rounded-lg px-3 " +
-                          (desconta === d ? "bg-superficie font-medium shadow-sm" : "text-tinta-2")
-                        }
-                      >
-                        {d ? "Desconta" : "Soma"}
-                      </button>
-                    ))}
+              {soChecklist ? (
+                <p className="text-sm text-tinta-3">
+                  Aparece no dia para ticar, mas fica fora da nota: não soma, não desconta e não
+                  entra no dia perfeito.
+                </p>
+              ) : (
+                <div>
+                  <span className="mb-1 block text-sm text-tinta-2">Pontos</span>
+                  <div className="flex gap-2">
+                    <label className="flex flex-1 items-center rounded-xl border border-borda bg-fundo px-3 focus-within:border-destaque">
+                      <span className="sr-only">Pontos</span>
+                      <input
+                        value={pontos}
+                        onChange={(e) => setPontos(e.target.value)}
+                        inputMode="decimal"
+                        placeholder="3"
+                        className="tabular w-full bg-transparent py-2.5 outline-none"
+                      />
+                      <span className="text-sm text-tinta-3">pts</span>
+                    </label>
+                    <div className="flex rounded-xl bg-fundo p-0.5 text-sm">
+                      {[false, true].map((d) => (
+                        <button
+                          key={String(d)}
+                          type="button"
+                          onClick={() => setDesconta(d)}
+                          className={
+                            "rounded-lg px-3 " +
+                            (desconta === d ? "bg-superficie font-medium shadow-sm" : "text-tinta-2")
+                          }
+                        >
+                          {d ? "Desconta" : "Soma"}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
 
               <label className="flex items-center gap-2 text-sm">
                 <input

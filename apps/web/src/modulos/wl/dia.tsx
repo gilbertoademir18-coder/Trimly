@@ -5,6 +5,7 @@ import {
   acharGrupo,
   acoesDoGrupo,
   diaLocal,
+  ehChecklist,
   formatarDia,
   formatarPontuacao,
   opcoesAtivas,
@@ -159,6 +160,22 @@ export function CartaoDoDia({
   const nota = pontuarDia(pontos, estado.pontosPossiveis ?? pontosPossiveis(ativas));
   const registroDe = (id: number) => estado.registros.find((r) => r.acaoId === id) ?? null;
 
+  // O checklist vai num bloco à parte, depois das que pontuam: ticar ali não
+  // mexe na barra de cima, e misturado às outras pareceria que mexe.
+  const pontuadas = ativas.filter((a) => !ehChecklist(a));
+  const checklist = ativas.filter(ehChecklist);
+
+  const linha = (a: Acao) => (
+    <li key={a.id}>
+      <LinhaAcao
+        acao={a}
+        registro={registroDe(a.id)}
+        ocupado={emVoo === a.id}
+        aoMarcar={(q, opcaoId) => void marcar(a, q, opcaoId)}
+      />
+    </li>
+  );
+
   return (
     <Cartao>
       <div className="flex items-start justify-between gap-3">
@@ -200,18 +217,14 @@ export function CartaoDoDia({
         aoEscolher={(id) => void trocarGrupo(id)}
       />
 
-      <ul className="mt-1 divide-y divide-borda">
-        {ativas.map((a) => (
-          <li key={a.id}>
-            <LinhaAcao
-              acao={a}
-              registro={registroDe(a.id)}
-              ocupado={emVoo === a.id}
-              aoMarcar={(q, opcaoId) => void marcar(a, q, opcaoId)}
-            />
-          </li>
-        ))}
-      </ul>
+      {pontuadas.length > 0 && <ul className="mt-1 divide-y divide-borda">{pontuadas.map(linha)}</ul>}
+
+      {checklist.length > 0 && (
+        <>
+          <h3 className="mt-4 text-xs font-medium text-tinta-3">Checklist · fora da nota</h3>
+          <ul className="divide-y divide-borda">{checklist.map(linha)}</ul>
+        </>
+      )}
 
     </Cartao>
   );
@@ -312,12 +325,20 @@ function LinhaAcao({
     <div className={"flex items-center gap-3 py-2.5 " + (ocupado ? "opacity-60" : "")}>
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm">{acao.nome}</div>
-        <div className="tabular text-xs text-tinta-3">
-          {sinal}
-          {Math.abs(pontos)} pts
-          {acao.repetivel && " · alvo " + acao.alvoDiario + "×"}
-          {feita && " · " + sinal + total + " hoje"}
-        </div>
+        {ehChecklist(acao) ? (
+          // Sem pontos não há o que dizer de valor; numa repetível, o alvo
+          // ainda é informação.
+          acao.repetivel && (
+            <div className="tabular text-xs text-tinta-3">{"alvo " + acao.alvoDiario + "×"}</div>
+          )
+        ) : (
+          <div className="tabular text-xs text-tinta-3">
+            {sinal}
+            {Math.abs(pontos)} pts
+            {acao.repetivel && " · alvo " + acao.alvoDiario + "×"}
+            {feita && " · " + sinal + total + " hoje"}
+          </div>
+        )}
       </div>
 
       {acao.repetivel ? (

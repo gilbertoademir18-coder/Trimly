@@ -18,6 +18,7 @@ import {
   acoesDoGrupo,
   opcoesAtivas,
   ordenarAcoes,
+  ehChecklist,
   podeSomar,
   pontosPossiveis,
   ordenarProjetos,
@@ -631,6 +632,24 @@ describe("podeSomar", () => {
       opcoes: [{ ...umaOpcao(9, false), id: 1 }, { ...umaOpcao(-2), id: 2 }],
     });
     expect(podeSomar(acao)).toBe(false);
+  });
+});
+
+describe("ehChecklist", () => {
+  it("é a ação de zero ponto", () => {
+    expect(ehChecklist(umaAcao({ pontos: 0 }))).toBe(true);
+    expect(ehChecklist(umaAcao({ pontos: 3 }))).toBe(false);
+    expect(ehChecklist(umaAcao({ pontos: -3 }))).toBe(false);
+  });
+
+  it("ação com opções nunca é checklist", () => {
+    expect(ehChecklist(umaAcao({ pontos: null, opcoes: [umaOpcao(3)] }))).toBe(false);
+  });
+
+  it("não fica pendente nem entra no dia perfeito", () => {
+    const item = umaAcao({ pontos: 0, repetivel: true, alvoDiario: 8 });
+    expect(podeSomar(item)).toBe(false);
+    expect(pontosPossiveis([item, umaAcao({ id: 2, pontos: 5 })])).toBe(5);
   });
 });
 

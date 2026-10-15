@@ -415,6 +415,16 @@ export function temOpcoes(a: Acao): boolean {
   return a.opcoes.length > 0;
 }
 
+/**
+ * `true` quando a ação é um item de checklist: zero ponto, sem opções.
+ *
+ * Ela aparece no dia e se marca como as outras, mas fica fora da nota — nem
+ * soma no numerador, nem entra no dia perfeito.
+ */
+export function ehChecklist(a: Acao): boolean {
+  return !temOpcoes(a) && a.pontos === 0;
+}
+
 /** As opções que ainda podem ser escolhidas, na ordem do cadastro. */
 export function opcoesAtivas(a: Acao): Opcao[] {
   return a.opcoes.filter((o) => o.ativa);

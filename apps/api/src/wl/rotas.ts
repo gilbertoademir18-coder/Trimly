@@ -126,15 +126,18 @@ const projetoParaJson = (p: LinhaProjeto) => ({
 });
 
 // Pontos cabem em DECIMAL(5,2) e o sinal é quem diz se a ação soma ou
-// desconta. Zero é barrado aqui e no banco: ação que não vale nada só ocupa
-// espaço na tela do dia.
-const Pontos = z
+// desconta. Zero, na ação, é o item de checklist: aparece no dia e se marca,
+// mas não entra na nota.
+const PontosDaAcao = z
   .number({ error: "precisa ser um número" })
   .min(-999.99, "entre -999,99 e 999,99")
   .max(999.99, "entre -999,99 e 999,99")
-  .refine((v) => v !== 0, "uma ação que vale zero não muda a nota de nenhum dia")
   .refine((v) => Number.isInteger(Math.round(v * 100)) && Math.abs(v * 100 - Math.round(v * 100)) < 1e-9,
     "no máximo duas casas decimais");
+
+// Na opção o zero continua barrado, aqui e no banco: uma alternativa que não
+// muda nada não tem por que ser escolhida.
+const Pontos = PontosDaAcao.refine((v) => v !== 0, "uma opção que vale zero não muda a nota de nenhum dia");
 
 /*
  * Uma opção de uma ação. `id` ausente é opção nova; presente, é edição — o
@@ -195,7 +198,7 @@ const grupoParaJson = (g: LinhaGrupo) => ({
 const CorpoAcao = z
   .object({
     nome: z.string().trim().min(1, "diga o nome da ação").max(80, "no máximo 80 caracteres"),
-    pontos: Pontos.nullish().transform((p) => p ?? null),
+    pontos: PontosDaAcao.nullish().transform((p) => p ?? null),
     repetivel: z.boolean().default(false),
     alvoDiario: z
       .number()
@@ -820,6 +823,10 @@ export async function rotasWl(app: FastifyInstance) {
    * sem registro é dia neutro: ele não vem, e a tela o desenha apagado em vez
    * de fingir um zero. Por isso o JOIN, e não LEFT JOIN: um dia que só tem o
    * grupo escolhido também tem linha em `wl_dia`, e não pode virar 0%.
+   *
+   * Pelo mesmo motivo o JOIN só pega registro que vale alguma coisa: um dia em
+   * que só se ticou o checklist (ações de zero ponto) não foi pontuado, e
+   * também não pode virar 0%.
    */
   app.get("/dias", async (req, reply) => {
     const intervalo = Intervalo.safeParse(req.query);
@@ -830,7 +837,7 @@ export async function rotasWl(app: FastifyInstance) {
              COALESCE(SUM(r."pontos_na_epoca" * r."quantidade"), 0)::float8 AS pontos,
              d."pontos_possiveis"::float8 AS possiveis
       FROM "wl_dia" d
-      JOIN "wl_registro" r ON r."data" = d."data"
+      JOIN "wl_registro" r ON r."data" = d."data" AND r."pontos_na_epoca" <> 0
       WHERE d."data" BETWEEN ${intervalo.data.de} AND ${intervalo.data.ate}
       GROUP BY d."data", d."pontos_possiveis"
       ORDER BY d."data"
