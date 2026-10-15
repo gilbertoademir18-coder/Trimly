@@ -14,6 +14,7 @@ import {
   ordenarAcoes,
   podeSomar,
   pontosPossiveis,
+  ordenarProjetos,
   periodoDoProjeto,
   pesagensDoProjeto,
   pontuarDia,
@@ -26,6 +27,7 @@ import {
   type Acao,
   type Opcao,
   type Pesagem,
+  type Projeto,
 } from "./calculos.ts";
 
 /** Uma ação comum, sem opções. */
@@ -263,6 +265,65 @@ describe("os recortes de projeto", () => {
 
     it("devolve null sem pesagem nenhuma", () => {
       expect(diasDoProjeto([])).toBeNull();
+    });
+  });
+
+  describe("ordenarProjetos", () => {
+    const pj = (id: number, nome: string): Projeto => ({ id, nome, pesoAlvo: null, nota: null });
+
+    it("põe o mais recente na frente, pelo período e não pelo id", () => {
+      /*
+       * O caso real que motivou isto: o projeto de 2026 foi criado PRIMEIRO
+       * (id 1) e os reconstruídos do histórico vieram depois (ids maiores).
+       * Por id, o projeto em andamento caía no fim da fila.
+       */
+      const projetos = [pj(3, "jan/2025"), pj(2, "dez/2018"), pj(1, "atual 2026")];
+      const pesagens = [
+        p("2018-12-27", 76, { projetoId: 2 }),
+        p("2019-06-30", 72, { projetoId: 2 }),
+        p("2025-01-04", 84, { projetoId: 3 }),
+        p("2026-10-15", 92, { projetoId: 1 }),
+      ];
+      expect(ordenarProjetos(projetos, pesagens).map((x) => x.nome)).toEqual([
+        "atual 2026",
+        "jan/2025",
+        "dez/2018",
+      ]);
+    });
+
+    it("projeto sem pesagem vem primeiro", () => {
+      // Acabou de ser criado: é nele que se vai pesar.
+      const projetos = [pj(1, "antigo"), pj(2, "recém-criado")];
+      const pesagens = [p("2026-10-15", 92, { projetoId: 1 })];
+      expect(ordenarProjetos(projetos, pesagens).map((x) => x.nome)).toEqual([
+        "recém-criado",
+        "antigo",
+      ]);
+    });
+
+    it("empate no fim do período desempata pelo id maior", () => {
+      const projetos = [pj(1, "um"), pj(2, "dois")];
+      const pesagens = [
+        p("2026-10-15", 92, { projetoId: 1 }),
+        p("2026-10-15", 91, { projetoId: 2 }),
+      ];
+      expect(ordenarProjetos(projetos, pesagens).map((x) => x.nome)).toEqual(["dois", "um"]);
+    });
+
+    it("dois sem pesagem desempatam pelo id maior", () => {
+      const projetos = [pj(1, "um"), pj(2, "dois")];
+      expect(ordenarProjetos(projetos, [])).toEqual([pj(2, "dois"), pj(1, "um")]);
+    });
+
+    it("não altera a lista recebida", () => {
+      const projetos = [pj(1, "um"), pj(2, "dois"), pj(3, "três")];
+      const antes = [...projetos];
+      ordenarProjetos(projetos, [p("2026-01-01", 90, { projetoId: 1 })]);
+      expect(projetos).toEqual(antes);
+    });
+
+    it("aguenta lista vazia", () => {
+      expect(ordenarProjetos([], [])).toEqual([]);
     });
   });
 

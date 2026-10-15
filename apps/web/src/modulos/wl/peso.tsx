@@ -12,6 +12,7 @@ import {
   formatarPeso,
   formatarVariacao,
   lerPeso,
+  ordenarProjetos,
   paraCampoLocal,
   periodoDoProjeto,
   pesagensDoProjeto,
@@ -72,7 +73,13 @@ export function PaginaPeso() {
         wlApi.perfil(),
       ]);
       setPesagens(ps);
-      setProjetos(pjs);
+      /*
+       * Guardada já na ordem de exibição: do mais recente para o mais antigo,
+       * pelo período. A API entrega por id (ordem de criação), que não serve —
+       * os projetos reconstruídos do passado nasceram depois do atual.
+       */
+      const ordenados = ordenarProjetos(pjs, ps);
+      setProjetos(ordenados);
       setPerfil(pf);
       setErro(null);
       /*
@@ -85,7 +92,9 @@ export function PaginaPeso() {
        */
       setSelecao((atual) => {
         if (atual !== null) return atual;
-        if (pjs[0]) return { tipo: "projeto", id: pjs[0].id };
+        // O primeiro da lista ORDENADA, que é o projeto mais recente — e não o
+        // de id maior, que é só o último a ter sido criado.
+        if (ordenados[0]) return { tipo: "projeto", id: ordenados[0].id };
         return ps.some((x) => x.projetoId === null) ? { tipo: "sem" } : { tipo: "tudo" };
       });
     } catch (e) {

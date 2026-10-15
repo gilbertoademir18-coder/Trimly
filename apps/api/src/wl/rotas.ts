@@ -591,8 +591,12 @@ export async function rotasWl(app: FastifyInstance) {
   // Projetos
 
   /*
-   * Do mais novo para o mais velho: é a ordem em que a tela os oferece, e o
-   * projeto em andamento é quase sempre o que se quer ver.
+   * Por id decrescente — ordem de CRIAÇÃO, e não de período.
+   *
+   * Quem ordena para exibir é a tela (`ordenarProjetos`), porque a ordem que
+   * interessa sai do período e o período sai das pesagens: não há coluna por
+   * onde o banco ordenasse sem agregar a relação a cada listagem. Aqui o id só
+   * garante uma ordem estável.
    */
   app.get("/projetos", async () => {
     const projetos = await prisma.wlProjeto.findMany({ orderBy: { id: "desc" } });

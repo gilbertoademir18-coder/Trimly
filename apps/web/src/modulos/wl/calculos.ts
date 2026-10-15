@@ -198,6 +198,37 @@ export function periodoDoProjeto(doProjeto: Pesagem[]): { de: string; ate: strin
 }
 
 /**
+ * Os projetos do mais recente para o mais antigo, pelo PERÍODO deles.
+ *
+ * Ordenado aqui e não no servidor porque o período não é coluna: ele sai das
+ * pesagens do projeto, e quem as tem em mão é a tela. A API entrega por id,
+ * que é a ordem de CRIAÇÃO — e as duas discordam feio: os projetos
+ * reconstruídos do histórico de 2018 a 2025 nasceram depois do projeto de
+ * 2026, então por id o projeto em andamento caía no fim da fila.
+ *
+ * Projeto sem pesagem nenhuma vem primeiro: foi criado agora e é nele que se
+ * vai pesar. Empate (dois acabando no mesmo dia, ou dois recém-criados)
+ * desempata pelo id maior, que é o mais novo dos dois.
+ */
+export function ordenarProjetos(projetos: Projeto[], pesagens: Pesagem[]): Projeto[] {
+  const fim = new Map(
+    projetos.map((p) => [p.id, periodoDoProjeto(pesagensDoProjeto(pesagens, p.id))?.ate ?? null]),
+  );
+  return [...projetos].sort((a, b) => {
+    const fa = fim.get(a.id) ?? null;
+    const fb = fim.get(b.id) ?? null;
+    // Sem período vai para a frente; entre dois sem período, decide o id.
+    if (fa === null || fb === null) {
+      if (fa === null && fb === null) return b.id - a.id;
+      return fa === null ? -1 : 1;
+    }
+    // Datas `AAAA-MM-DD` comparam como texto: a ordem alfabética é a cronológica.
+    if (fa !== fb) return fa < fb ? 1 : -1;
+    return b.id - a.id;
+  });
+}
+
+/**
  * Quantos dias o projeto durou, contando as pontas.
  *
  * Uma pesagem só é um dia, não zero: o projeto de um dia existiu. `null` sem
