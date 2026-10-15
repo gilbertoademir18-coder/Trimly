@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { Modal } from "../../modal.tsx";
 import { wlApi } from "./api.ts";
-import { Aviso, CabecalhoInterno } from "./aviso.tsx";
+import { AcaoDaPagina } from "../../layout.tsx";
+import { Aviso } from "./aviso.tsx";
 import {
   diaLocal,
   diasDoProjeto,
@@ -145,7 +146,12 @@ export function PaginaPeso() {
 
   return (
     <div className="space-y-5">
-      <CabecalhoInterno titulo="Peso">
+      {/*
+        O botão é pintado no cabeçalho do app, mas mora aqui: é daqui que sai o
+        `onClick` e o estado que ele mexe. Quem faz a mudança de lugar é um
+        portal, em `layout.tsx`.
+      */}
+      <AcaoDaPagina>
         <button
           type="button"
           onClick={() => setEdicao({ pesagem: null })}
@@ -153,7 +159,7 @@ export function PaginaPeso() {
         >
           Registrar peso
         </button>
-      </CabecalhoInterno>
+      </AcaoDaPagina>
       {erro && <Aviso texto={erro} />}
 
       <SeletorDeProjeto

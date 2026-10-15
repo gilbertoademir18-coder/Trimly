@@ -93,12 +93,12 @@ export function PaginaWl() {
   return (
     <div className="flex flex-col gap-5 lg:grid lg:grid-cols-3 lg:items-start">
       {/*
-        Sem título à vista: a navegação do topo já marca em que módulo você
-        está, e repetir "WL" logo abaixo só gastava a primeira tela do celular.
-        O h1 fica para leitor de tela, que não enxerga o destaque do menu e
-        precisa de um cabeçalho para saber onde entrou.
+        Sem título à vista: a migalha do cabeçalho já diz em que módulo você
+        está, e repetir "WL" logo abaixo gastaria a primeira tela do celular.
+        O `h1` para leitor de tela vem do layout, montado a partir do
+        `handle.titulo` da rota — pedi-lo também aqui seria dizer a mesma coisa
+        em dois lugares, com o risco de os dois discordarem.
       */}
-      <h1 className="sr-only">WL</h1>
       {erro && (
         <div className="lg:col-span-3">
           <Aviso texto={erro} />

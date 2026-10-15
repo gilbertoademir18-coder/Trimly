@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useArrastavel } from "../../arrastar.ts";
 import { Modal } from "../../modal.tsx";
 import { wlApi, type AcaoNova } from "./api.ts";
-import { Aviso, CabecalhoInterno } from "./aviso.tsx";
+import { AcaoDaPagina } from "../../layout.tsx";
+import { Aviso } from "./aviso.tsx";
 import {
   diaLocal,
   opcoesAtivas,
@@ -160,7 +161,12 @@ export function PaginaAcoes() {
 
   return (
     <div className="space-y-5">
-      <CabecalhoInterno titulo="Ações">
+      {/*
+        O botão é pintado no cabeçalho do app, mas mora aqui: é daqui que sai o
+        `onClick` e o estado que ele mexe. Quem faz a mudança de lugar é um
+        portal, em `layout.tsx`.
+      */}
+      <AcaoDaPagina>
         <button
           type="button"
           onClick={() => setEdicao({ acao: null })}
@@ -168,7 +174,7 @@ export function PaginaAcoes() {
         >
           Nova ação
         </button>
-      </CabecalhoInterno>
+      </AcaoDaPagina>
       {erro && <Aviso texto={erro} />}
 
       {/*
