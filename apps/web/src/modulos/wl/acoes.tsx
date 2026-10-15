@@ -178,109 +178,110 @@ export function PaginaAcoes() {
       {erro && <Aviso texto={erro} />}
 
       {/*
-        No desktop, duas colunas: à esquerda a referência (o dia perfeito de
-        cada grupo, e quem está fora de grupo), à direita as listas, que são o
-        assunto da tela.
+        Uma pilha só, tudo na largura inteira.
 
-        No celular, a pilha de sempre: a coluna da esquerda é `contents` ali, e o
-        resumo do dia perfeito desce para o fim com `order-last`, por ser
-        consulta e não tarefa.
+        Eram duas colunas no desktop, com a referência à esquerda e as listas à
+        direita. As listas são o assunto da tela e cada linha delas carrega nome,
+        resumo, três botões e a coluna de reordenar — espremidas em 3/5 da largura,
+        o nome truncava cedo. Agora cada bloco ocupa a linha inteira.
+
+        O aviso de ação fora de grupo fica no alto, porque é aviso: ele conta algo
+        que precisa de conserto, e no fim da página ninguém o veria.
       */}
-      <div className="flex flex-col gap-5 lg:grid lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:items-start">
-        <div className="contents lg:flex lg:flex-col lg:gap-5">
-          {semGrupo.length > 0 && (
-            <p className="rounded-xl border border-atencao px-3 py-2 text-xs text-atencao">
-              Fora de grupo, e por isso sem aparecer em dia nenhum:{" "}
-              {semGrupo.map((a) => a.nome).join(", ")}.
-            </p>
-          )}
+      {semGrupo.length > 0 && (
+        <p className="rounded-xl border border-atencao px-3 py-2 text-xs text-atencao">
+          Fora de grupo, e por isso sem aparecer em dia nenhum:{" "}
+          {semGrupo.map((a) => a.nome).join(", ")}.
+        </p>
+      )}
 
-          <section className="order-last rounded-2xl border border-borda bg-superficie p-4 lg:order-none">
-            <h2 className="text-sm font-medium">O dia perfeito de cada grupo</h2>
-            {gruposAtivos.length === 0 ? (
-              <p className="mt-1 text-xs text-tinta-3">
-                Nenhum grupo ainda. Crie um no painel de grupos.
-              </p>
-            ) : (
-              <ul className="mt-2 space-y-1">
-                {gruposAtivos.map((g) => (
-                  <li key={g.id} className="flex items-baseline justify-between gap-2 text-sm">
-                    <span className="min-w-0 truncate text-tinta-2">{g.nome}</span>
-                    <span className="tabular font-medium">
-                      {pontosPossiveis(acoes.filter((a) => a.grupos.includes(g.id)))} pts
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-            <p className="mt-2 text-xs text-tinta-3">
-              Cada grupo tem o seu 100%: a soma das ações positivas dele, pelo alvo diário de cada
-              uma, mais a melhor opção das que têm opções. Mexer aqui vale de hoje em diante — a nota
-              de hoje é recalculada na hora, e os dias anteriores guardam o que as ações valiam na
-              época.
-            </p>
-          </section>
-        </div>
+      {/*
+        O `pertence` de cada seção é o mesmo filtro que a montou. É por ele
+        que `reordenarSubconjunto` sabe quais vagas da lista completa esta
+        seção ocupa — arrastar aqui não mexe nas outras.
 
-        <div className="flex flex-col gap-5">
-          {/*
-            O `pertence` de cada seção é o mesmo filtro que a montou. É por ele
-            que `reordenarSubconjunto` sabe quais vagas da lista completa esta
-            seção ocupa — arrastar aqui não mexe nas outras.
+        Não se arrasta de uma seção para outra de propósito: levar uma ação
+        de "Positivas" para "Negativas" seria trocar o sinal dos pontos
+        dela, que é coisa do formulário e não de um gesto.
+      */}
+      <Secao
+        titulo="Com opções"
+        vazio=""
+        acoes={comOpcoes}
+        aoEditar={abrirEdicao}
+        aoMexer={mexer}
+        aoReordenar={(de, para) => moverNaSecao((a) => a.ativa && temOpcoes(a), de, para)}
+        aoLargar={() => void gravarOrdem()}
+      />
 
-            Não se arrasta de uma seção para outra de propósito: levar uma ação
-            de "Positivas" para "Negativas" seria trocar o sinal dos pontos
-            dela, que é coisa do formulário e não de um gesto.
-          */}
-          <Secao
-            titulo="Com opções"
-            vazio=""
-            acoes={comOpcoes}
-            aoEditar={abrirEdicao}
-            aoMexer={mexer}
-            aoReordenar={(de, para) => moverNaSecao((a) => a.ativa && temOpcoes(a), de, para)}
-            aoLargar={() => void gravarOrdem()}
-          />
+      <Secao
+        titulo="Positivas"
+        vazio="Nenhuma ainda. São elas que formam o dia perfeito."
+        acoes={positivas}
+        aoEditar={abrirEdicao}
+        aoMexer={mexer}
+        aoReordenar={(de, para) =>
+          moverNaSecao((a) => a.ativa && !temOpcoes(a) && (a.pontos ?? 0) > 0, de, para)
+        }
+        aoLargar={() => void gravarOrdem()}
+      />
 
-          <Secao
-            titulo="Positivas"
-            vazio="Nenhuma ainda. São elas que formam o dia perfeito."
-            acoes={positivas}
-            aoEditar={abrirEdicao}
-            aoMexer={mexer}
-            aoReordenar={(de, para) =>
-              moverNaSecao((a) => a.ativa && !temOpcoes(a) && (a.pontos ?? 0) > 0, de, para)
-            }
-            aoLargar={() => void gravarOrdem()}
-          />
+      <Secao
+        titulo="Negativas"
+        vazio="Nenhuma ainda. Elas descontam da nota do dia."
+        acoes={negativas}
+        aoEditar={abrirEdicao}
+        aoMexer={mexer}
+        aoReordenar={(de, para) =>
+          moverNaSecao((a) => a.ativa && !temOpcoes(a) && (a.pontos ?? 0) < 0, de, para)
+        }
+        aoLargar={() => void gravarOrdem()}
+      />
 
-          <Secao
-            titulo="Negativas"
-            vazio="Nenhuma ainda. Elas descontam da nota do dia."
-            acoes={negativas}
-            aoEditar={abrirEdicao}
-            aoMexer={mexer}
-            aoReordenar={(de, para) =>
-              moverNaSecao((a) => a.ativa && !temOpcoes(a) && (a.pontos ?? 0) < 0, de, para)
-            }
-            aoLargar={() => void gravarOrdem()}
-          />
+      {/*
+        Arquivadas sem reordenar: elas não aparecem em dia nenhum, então a
+        ordem delas não decide nada.
+      */}
+      {arquivadas.length > 0 && (
+        <Secao
+          titulo="Arquivadas"
+          vazio=""
+          acoes={arquivadas}
+          aoEditar={abrirEdicao}
+          aoMexer={mexer}
+        />
+      )}
 
-          {/*
-            Arquivadas sem reordenar: elas não aparecem em dia nenhum, então a
-            ordem delas não decide nada.
-          */}
-          {arquivadas.length > 0 && (
-            <Secao
-              titulo="Arquivadas"
-              vazio=""
-              acoes={arquivadas}
-              aoEditar={abrirEdicao}
-              aoMexer={mexer}
-            />
-          )}
-        </div>
-      </div>
+      {/*
+        A referência vai para o fim: ela é consulta, não tarefa. Quem abre esta
+        tela vem mexer no cadastro; conferir quanto vale o dia perfeito é o que se
+        faz depois, e de vez em quando.
+      */}
+      <section className="rounded-2xl border border-borda bg-superficie p-4">
+        <h2 className="text-sm font-medium">O dia perfeito de cada grupo</h2>
+        {gruposAtivos.length === 0 ? (
+          <p className="mt-1 text-xs text-tinta-3">
+            Nenhum grupo ainda. Crie um no painel de grupos.
+          </p>
+        ) : (
+          <ul className="mt-2 space-y-1">
+            {gruposAtivos.map((g) => (
+              <li key={g.id} className="flex items-baseline justify-between gap-2 text-sm">
+                <span className="min-w-0 truncate text-tinta-2">{g.nome}</span>
+                <span className="tabular font-medium">
+                  {pontosPossiveis(acoes.filter((a) => a.grupos.includes(g.id)))} pts
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className="mt-2 text-xs text-tinta-3">
+          Cada grupo tem o seu 100%: a soma das ações positivas dele, pelo alvo diário de cada
+          uma, mais a melhor opção das que têm opções. Mexer aqui vale de hoje em diante — a nota
+          de hoje é recalculada na hora, e os dias anteriores guardam o que as ações valiam na
+          época.
+        </p>
+      </section>
 
       {/*
         O título da janela já diz se é cadastro ou edição — por isso o
