@@ -70,7 +70,12 @@ const CorpoPerfil = z.object({
 
 const CorpoProjeto = z.object({
   nome: z.string().trim().min(1, "diga o nome do projeto").max(80, "no máximo 80 caracteres"),
-  pesoAlvo: Peso,
+  /*
+   * Meta ausente é projeto sem objetivo declarado, não erro de preenchimento:
+   * é o caso dos projetos reconstruídos do histórico importado, que não
+   * trouxeram meta de lugar nenhum.
+   */
+  pesoAlvo: Peso.nullish().transform((p) => p ?? null),
   nota: z
     .string()
     .trim()
@@ -92,7 +97,7 @@ type LinhaPerfil = { alturaCm: number | null };
 type LinhaProjeto = {
   id: number;
   nome: string;
-  pesoAlvo: { toNumber(): number };
+  pesoAlvo: { toNumber(): number } | null;
   nota: string | null;
 };
 
@@ -116,7 +121,7 @@ const perfilParaJson = (p: LinhaPerfil) => ({ alturaCm: p.alturaCm });
 const projetoParaJson = (p: LinhaProjeto) => ({
   id: p.id,
   nome: p.nome,
-  pesoAlvo: p.pesoAlvo.toNumber(),
+  pesoAlvo: p.pesoAlvo?.toNumber() ?? null,
   nota: p.nota,
 });
 

@@ -165,7 +165,7 @@ export function PaginaPeso() {
                   <Numero
                     rotulo={resumo.faltam > 0 ? "Faltam" : "Meta"}
                     valor={resumo.faltam > 0 ? `${formatarPeso(resumo.faltam)} kg` : "Atingida"}
-                    detalhe={`meta de ${formatarPeso(projetoAberto!.pesoAlvo)} kg`}
+                    detalhe={`meta de ${formatarPeso(projetoAberto!.pesoAlvo!)} kg`}
                   />
                 )}
                 {resumo.imc !== null && (
@@ -450,7 +450,8 @@ function FormPesagem({
           <option value="">Sem projeto</option>
           {projetos.map((x) => (
             <option key={x.id} value={x.id}>
-              {x.nome} (meta {formatarPeso(x.pesoAlvo)} kg)
+              {x.nome}
+              {x.pesoAlvo === null ? "" : ` (meta ${formatarPeso(x.pesoAlvo)} kg)`}
             </option>
           ))}
         </select>
@@ -830,7 +831,9 @@ function CartaoProjeto({
       <div className="flex items-baseline justify-between gap-2">
         <h2 className="min-w-0 truncate font-medium">{projeto.nome}</h2>
         <span className="tabular shrink-0 text-sm text-tinta-2">
-          meta {formatarPeso(projeto.pesoAlvo)} kg
+          {projeto.pesoAlvo === null
+            ? "sem meta"
+            : `meta ${formatarPeso(projeto.pesoAlvo)} kg`}
         </span>
       </div>
 
@@ -875,7 +878,7 @@ function FormProjeto({
   aoCancelar: () => void;
 }) {
   const [nome, setNome] = useState(projeto?.nome ?? "");
-  const [alvo, setAlvo] = useState(projeto ? formatarPeso(projeto.pesoAlvo) : "");
+  const [alvo, setAlvo] = useState(projeto?.pesoAlvo ? formatarPeso(projeto.pesoAlvo) : "");
   const [nota, setNota] = useState(projeto?.nota ?? "");
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -883,8 +886,12 @@ function FormProjeto({
   async function enviar(e: React.FormEvent) {
     e.preventDefault();
     if (!nome.trim()) return setErro("Diga o nome do projeto.");
-    const pesoAlvo = lerPeso(alvo);
-    if (pesoAlvo === null) return setErro("Digite a meta em kg, como 75.");
+    /*
+     * Campo vazio é "sem meta", e é válido: projeto reconstruído do passado
+     * pode não ter tido objetivo declarado. Só texto que não é peso é erro.
+     */
+    const pesoAlvo = alvo.trim() ? lerPeso(alvo) : null;
+    if (alvo.trim() && pesoAlvo === null) return setErro("Digite a meta em kg, como 75.");
 
     setSalvando(true);
     setErro(null);
@@ -919,7 +926,7 @@ function FormProjeto({
       </label>
 
       <label className="block">
-        <span className="mb-1 block text-sm text-tinta-2">Meta de peso (kg)</span>
+        <span className="mb-1 block text-sm text-tinta-2">Meta de peso (kg, opcional)</span>
         <input
           value={alvo}
           onChange={(e) => setAlvo(e.target.value)}
@@ -932,7 +939,8 @@ function FormProjeto({
           de hoje, e é justamente por isso que ela mora aqui e não no perfil.
         */}
         <span className="mt-1 block text-xs text-tinta-3">
-          Vale só para este projeto. Cada tentativa pode ter a sua.
+          Vale só para este projeto. Em branco, o projeto fica sem meta — a
+          variação e o IMC continuam, só não há o que faltar.
         </span>
       </label>
 

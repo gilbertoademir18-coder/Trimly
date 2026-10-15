@@ -42,7 +42,13 @@ export type Perfil = { alturaCm: number | null };
  * calculado por `periodoDoProjeto`. Datas cadastradas poderiam discordar das
  * pesagens, e aí haveria duas versões da mesma verdade.
  */
-export type Projeto = { id: number; nome: string; pesoAlvo: number; nota: string | null };
+export type Projeto = {
+  id: number;
+  nome: string;
+  /** `null` é projeto sem meta declarada — o caso dos reconstruídos do passado. */
+  pesoAlvo: number | null;
+  nota: string | null;
+};
 
 /**
  * Lê o peso como a pessoa digita: `72,5`, `72.5`, ` 72 `. Devolve `null` para

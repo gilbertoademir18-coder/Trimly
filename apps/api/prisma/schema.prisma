@@ -30,7 +30,13 @@ model WlProjeto {
   /// A meta de peso deste projeto. Cada um tem a sua — 75 kg hoje podem ter
   /// sido 70 em 2019, e cobrar o passado pela meta de agora falsearia o
   /// progresso de todo mundo.
-  pesoAlvo Decimal @map("peso_alvo") @db.Decimal(5, 2)
+  ///
+  /// Anulável porque projeto reconstruído do passado pode não ter tido meta
+  /// registrada em lugar nenhum. Inventar uma (o menor peso atingido? a meta
+  /// de hoje?) poria na base um objetivo que ninguém definiu, e a barra de
+  /// progresso sairia calculada sobre ele. Sem meta, o projeto ainda mostra
+  /// variação e IMC — só não há o que faltar.
+  pesoAlvo Decimal? @map("peso_alvo") @db.Decimal(5, 2)
 
   nota String?
 
