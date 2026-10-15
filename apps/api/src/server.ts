@@ -79,6 +79,8 @@ if (!MODO_DEV && existsSync(WEB_DIST)) {
   app.log.warn(`Front não encontrado em ${WEB_DIST} — rode "npm run build". Servindo só a API.`);
 }
 
-// 0.0.0.0 e não localhost: o `tailscale serve` chega por 127.0.0.1, mas assim
+// Produção em 0.0.0.0: o `tailscale serve` chega por 127.0.0.1, mas assim
 // também dá para abrir direto pelo IP do tailnet se o serve estiver fora.
-await app.listen({ port: PORTA, host: "0.0.0.0" });
+// Dev só no localhost: quem fala com ela é o Vite, e no notebook do trabalho
+// 0.0.0.0 abriria a API para a rede da empresa.
+await app.listen({ port: PORTA, host: MODO_DEV ? "127.0.0.1" : "0.0.0.0" });
