@@ -7,10 +7,10 @@
  * pontuação, e juntar tudo passaria de quatrocentas linhas sem que as duas
  * metades se falem.
  */
-import { diaLocal, formatarDia } from "./calculos.ts";
+import { diaLocal, doCampoLocal, formatarDia, formatarHora, paraCampoLocal } from "./calculos.ts";
 
 // Reexportados para quem usa o jejum não precisar saber de onde vêm.
-export { diaLocal, formatarDia };
+export { diaLocal, doCampoLocal, formatarDia, formatarHora, paraCampoLocal };
 
 export type Jejum = {
   id: number;
@@ -103,10 +103,6 @@ export function faltamSeg(j: Jejum, agora: Date = new Date()): number | null {
   return j.metaMin * 60 - duracaoSeg(j, agora);
 }
 
-/** `"2026-10-01T20:07:00.000Z"` → `"20:07"`, no fuso de quem está olhando. */
-export function formatarHora(iso: string): string {
-  return new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-}
 
 export type DiaDeJejum = { dia: string; jejuns: Jejum[]; totalSeg: number };
 
@@ -134,29 +130,4 @@ export function agruparPorDia(jejuns: Jejum[], agora: Date = new Date()): DiaDeJ
       jejuns: [...lista].sort((a, b) => (a.inicio < b.inicio ? 1 : -1)),
       totalSeg: lista.reduce((soma, j) => soma + duracaoSeg(j, agora), 0),
     }));
-}
-
-/*
- * As duas pontes para o `<input type="datetime-local">`, que fala em hora
- * local sem fuso ("2026-10-01T20:07") enquanto o resto do app fala ISO em UTC.
- *
- * É a fronteira onde o erro de fuso nasce se alguém cortar a string na mão —
- * `iso.slice(0, 16)` mostraria 23:07 para quem jejuou às 20:07.
- */
-
-/** Instante ISO → o texto que o campo entende, no fuso de quem está olhando. */
-export function paraCampoLocal(iso: string): string {
-  const d = new Date(iso);
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
-}
-
-/**
- * O texto do campo → instante ISO.
- *
- * `new Date("2026-10-01T20:07")` já interpreta como hora local, que é
- * exatamente o que o campo quis dizer.
- */
-export function doCampoLocal(valor: string): string {
-  return new Date(valor).toISOString();
 }

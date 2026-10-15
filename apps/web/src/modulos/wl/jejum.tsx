@@ -11,8 +11,8 @@ import {
   formatarDuracao,
   formatarHora,
   formatarRelogio,
-  METAS,
   paraCampoLocal,
+  METAS,
   progresso,
   type Jejum,
 } from "./jejum-calculos.ts";
