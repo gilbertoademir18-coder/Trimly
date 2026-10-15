@@ -6,6 +6,7 @@ import {
   emAndamento,
   faltamSeg,
   formatarDuracao,
+  formatarDuracaoCurta,
   formatarRelogio,
   paraCampoLocal,
   progresso,
@@ -171,5 +172,28 @@ describe("as pontes do campo datetime-local", () => {
   it("os segundos são zerados, porque o campo não os tem", () => {
     const comSegundos = "2026-10-01T23:07:45.000Z";
     expect(doCampoLocal(paraCampoLocal(comSegundos))).toBe("2026-10-01T23:07:00.000Z");
+  });
+});
+
+describe("formatarDuracaoCurta", () => {
+  it("mostra so a hora cheia", () => {
+    expect(formatarDuracaoCurta(16 * 3600)).toBe("16h");
+    expect(formatarDuracaoCurta(16 * 3600 + 12 * 60)).toBe("16h");
+  });
+
+  it("trunca em vez de arredondar", () => {
+    // 15h50 nao pode virar "16h": diria que a meta foi batida quando nao foi.
+    expect(formatarDuracaoCurta(15 * 3600 + 50 * 60)).toBe("15h");
+    expect(formatarDuracaoCurta(16 * 3600 - 1)).toBe("15h");
+  });
+
+  it("abaixo de uma hora mostra os minutos", () => {
+    expect(formatarDuracaoCurta(40 * 60)).toBe("40min");
+    expect(formatarDuracaoCurta(59 * 60 + 59)).toBe("59min");
+    expect(formatarDuracaoCurta(0)).toBe("0min");
+  });
+
+  it("aguenta jejum de mais de um dia", () => {
+    expect(formatarDuracaoCurta(30 * 3600)).toBe("30h");
   });
 });

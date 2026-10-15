@@ -10,6 +10,7 @@ import {
   semanasDoMes,
   type DiaResumido,
 } from "./calculos.ts";
+import { agruparPorDia, formatarDuracao, formatarDuracaoCurta } from "./jejum-calculos.ts";
 
 const DIAS_DA_SEMANA = ["D", "S", "T", "Q", "Q", "S", "S"];
 
@@ -47,13 +48,27 @@ export function Calendario({
   const [ano, setAno] = useState(() => Number(hoje.slice(0, 4)));
   const [mes, setMes] = useState(() => Number(hoje.slice(5, 7)));
   const [dias, setDias] = useState<DiaResumido[] | null>(null);
+  /** Segundos de jejum por dia, somando os que começaram nele. */
+  const [jejumPorDia, setJejumPorDia] = useState<Map<string, number>>(new Map());
   const [erro, setErro] = useState<string | null>(null);
 
   const carregar = useCallback(async () => {
     const semanas = semanasDoMes(ano, mes);
     const doMes = semanas.flat().filter((d): d is string => d !== null);
+    const de = doMes[0]!;
+    const ate = doMes.at(-1)!;
     try {
-      setDias(await wlApi.dias(doMes[0]!, doMes.at(-1)!));
+      // As duas viagens em paralelo: são independentes, e em série o calendário
+      // piscaria duas vezes ao virar o mês.
+      const [resumos, jejuns] = await Promise.all([wlApi.dias(de, ate), wlApi.jejuns(de, ate)]);
+      setDias(resumos);
+      /*
+       * `agruparPorDia` é o mesmo agrupamento do histórico de jejuns: o dia é o
+       * do início, mesmo quando o jejum atravessa a meia-noite, e dois jejuns
+       * no mesmo dia somam. Calendário e histórico contando diferente seriam
+       * dois números para a mesma pergunta.
+       */
+      setJejumPorDia(new Map(agruparPorDia(jejuns).map((d) => [d.dia, d.totalSeg])));
       setErro(null);
     } catch (e) {
       setErro((e as Error).message);
@@ -135,21 +150,34 @@ export function Calendario({
             const resumo = porDia.get(dia);
             const nota = resumo ? pontuarDia(resumo.pontos, resumo.pontosPossiveis) : null;
             const futuro = dia > hoje;
+            const jejumSeg = jejumPorDia.get(dia) ?? null;
+
+            // O que o mouse e o leitor de tela recebem: aqui cabe o número
+            // cheio, que no quadradinho não caberia.
+            const partes = [
+              futuro ? "futuro" : nota === null ? "sem registro" : formatarPontuacao(nota),
+              jejumSeg === null ? null : "jejum de " + formatarDuracao(jejumSeg),
+            ].filter((p): p is string => p !== null);
 
             return (
               <button
                 key={dia}
                 type="button"
                 onClick={() => aoSelecionar(dia)}
-                title={futuro ? "Dia futuro" : nota === null ? "Sem registro" : formatarPontuacao(nota)}
-                aria-label={
-                  dia + (futuro ? ": futuro" : nota === null ? ": sem registro" : ": " + formatarPontuacao(nota))
-                }
+                title={partes.join(" · ")}
+                aria-label={dia + ": " + partes.join(", ")}
                 aria-current={dia === selecionado ? "date" : undefined}
-                // O futuro fica só contornado: ainda não tem nota para pintar,
-                // e o quadradinho cheio de cinza diria "dia sem registro".
+                /*
+                 * Três linhas empilhadas em vez do quadrado de antes: o número
+                 * do dia, a nota e o jejum. `justify-start` e não `center` para
+                 * os dias ficarem todos na mesma altura — centralizando, o
+                 * número dançava conforme o dia tivesse uma linha ou três.
+                 *
+                 * O futuro fica só contornado: ainda não tem nota para pintar, e
+                 * o quadradinho cheio de cinza diria "dia sem registro".
+                 */
                 className={
-                  "tabular aspect-square rounded-lg text-xs transition-colors " +
+                  "tabular flex min-h-14 flex-col items-center justify-start gap-0.5 rounded-lg px-0.5 py-1 text-xs leading-none transition-colors " +
                   (futuro
                     ? "border border-dashed border-borda text-tinta-3"
                     : nota === null
@@ -160,7 +188,21 @@ export function Calendario({
                   (dia === hoje ? " font-semibold" : "")
                 }
               >
-                {Number(dia.slice(8, 10))}
+                <span>{Number(dia.slice(8, 10))}</span>
+                {/*
+                  As duas linhas de baixo em 10px e com opacidade: elas são o
+                  detalhe, e em tamanho cheio competiriam com o número do dia.
+                  Dia sem o dado não ganha traço nenhum — a linha fica vazia, que
+                  é mais quieto que uma grade cheia de "—".
+                */}
+                {nota !== null && (
+                  <span className="text-[0.625rem] opacity-80">{formatarPontuacao(nota)}</span>
+                )}
+                {jejumSeg !== null && (
+                  <span className="text-[0.625rem] opacity-70">
+                    {formatarDuracaoCurta(jejumSeg)}
+                  </span>
+                )}
               </button>
             );
           })}

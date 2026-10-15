@@ -74,6 +74,18 @@ export function formatarDuracao(segundos: number): string {
 }
 
 /**
+ * `58320` → `"16h"`. Para o quadradinho do calendário, onde não cabe o minuto.
+ *
+ * Trunca, não arredonda: arredondando, um jejum de 15h50 viraria "16h" e diria
+ * que a meta foi batida quando não foi. Errar para baixo nunca promete o que
+ * não aconteceu, e o número cheio continua no `title` de cada dia.
+ */
+export function formatarDuracaoCurta(segundos: number): string {
+  const totalMin = Math.floor(segundos / 60);
+  return totalMin < 60 ? `${totalMin}min` : `${Math.floor(totalMin / 60)}h`;
+}
+
+/**
  * Quanto da meta já foi cumprido, de 0 a 1. `null` em jejum livre.
  *
  * Passa de 1 quando a meta é batida e o jejum continua — quem corta é a tela,
