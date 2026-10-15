@@ -244,11 +244,22 @@ export function diasDoProjeto(doProjeto: Pesagem[]): number | null {
 }
 export type Periodo = "30d" | "90d" | "tudo";
 
-/** As pesagens dos últimos N dias, contando a partir de `hoje`. */
-export function filtrarPeriodo(pesagens: Pesagem[], periodo: Periodo, hoje: string): Pesagem[] {
+/**
+ * As pesagens dos últimos N dias, contando para trás a partir de `ate`.
+ *
+ * `ate` é a ÚLTIMA PESAGEM do que se está olhando, e não a data de hoje.
+ * Contar de hoje só funcionava quando havia uma história contínua; com os
+ * projetos, a janela de 90 dias do calendário deixava vazio o gráfico de
+ * qualquer projeto encerrado — e eram nove de dez.
+ *
+ * Ancorada no fim dos dados, a janela sempre mostra algo e passa a significar
+ * "os últimos 30 dias DESTE projeto". Em projeto mais curto que a janela ela
+ * não recorta nada, que é o resultado certo: não há o que esconder.
+ */
+export function filtrarPeriodo(pesagens: Pesagem[], periodo: Periodo, ate: string): Pesagem[] {
   if (periodo === "tudo") return pesagens;
   const dias = periodo === "30d" ? 30 : 90;
-  const corte = new Date(`${hoje}T00:00:00Z`);
+  const corte = new Date(`${ate}T00:00:00Z`);
   corte.setUTCDate(corte.getUTCDate() - dias);
   const inicio = corte.toISOString().slice(0, 10);
   // Comparar `AAAA-MM-DD` como texto funciona: a ordem alfabética é a cronológica.

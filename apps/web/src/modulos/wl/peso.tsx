@@ -127,6 +127,19 @@ export function PaginaPeso() {
   const resumo = resumir(emFoco, projetoAberto?.pesoAlvo ?? null, perfil?.alturaCm ?? null);
   const soltas = pesagens.filter((x) => x.projetoId === null).length;
 
+  /*
+   * De onde a janela do gráfico conta para trás: a última pesagem em foco.
+   *
+   * Não `hoje`. Num projeto encerrado em 2020, a janela de 90 dias do
+   * calendário não pega pesagem nenhuma e o gráfico diz “nenhuma pesagem neste
+   * período” tendo 24 delas em mão. Ancorada no fim dos dados, a janela
+   * significa "os últimos 90 dias deste projeto" e nunca fica vazia.
+   *
+   * `hoje` só serve de reserva para a seleção sem pesagem nenhuma, onde não há
+   * gráfico para desenhar de todo jeito.
+   */
+  const fimDoFoco = emFoco.at(-1)?.dia ?? hoje;
+
   return (
     <div className="space-y-5">
       <CabecalhoInterno titulo="Peso">
@@ -225,7 +238,14 @@ export function PaginaPeso() {
             <section className="rounded-2xl border border-borda bg-superficie p-4">
               <div className="mb-3 flex items-center justify-between gap-2">
                 <h2 className="font-medium">Evolução do peso (kg)</h2>
-                <div className="flex rounded-full bg-fundo p-0.5 text-xs">
+                {/*
+                  O título diz de onde a janela conta, porque “30d” sozinho faz
+                  pensar em calendário — e num projeto de 2019 seria enganoso.
+                */}
+                <div
+                  className="flex rounded-full bg-fundo p-0.5 text-xs"
+                  title={`Contados a partir da última pesagem (${formatarDia(fimDoFoco, true)})`}
+                >
                   {(["30d", "90d", "tudo"] as const).map((x) => (
                     <button
                       key={x}
@@ -239,7 +259,7 @@ export function PaginaPeso() {
                 </div>
               </div>
               <GraficoPeso
-                pesagens={filtrarPeriodo(emFoco, periodo, hoje)}
+                pesagens={filtrarPeriodo(emFoco, periodo, fimDoFoco)}
                 pesoAlvo={projetoAberto?.pesoAlvo ?? null}
               />
             </section>

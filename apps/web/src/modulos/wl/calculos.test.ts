@@ -141,9 +141,36 @@ describe("resumir", () => {
 describe("filtrarPeriodo", () => {
   const serie = [p("2026-06-01", 90), p("2026-09-05", 86), p("2026-09-30", 85)];
 
-  it("corta pelos últimos N dias a partir de hoje", () => {
+  it("corta pelos últimos N dias a partir da âncora", () => {
     expect(filtrarPeriodo(serie, "30d", "2026-09-30").map((x) => x.dia)).toEqual(["2026-09-05", "2026-09-30"]);
     expect(filtrarPeriodo(serie, "tudo", "2026-09-30")).toHaveLength(3);
+  });
+
+  it("a âncora é a última pesagem, não o dia de hoje", () => {
+    /*
+     * O bug que isto tranca: o gráfico de todo projeto encerrado aparecia vazio.
+     *
+     * A âncora era a data de hoje, então a janela de 90 dias não pegava nenhuma
+     * pesagem de um projeto de 2019 — e o gráfico dizia “nenhuma pesagem neste
+     * período” tendo dezenas em mão. Ancorada na última pesagem, a janela passa
+     * a significar "os últimos 90 dias DESTE projeto".
+     */
+    const de2019 = [p("2019-01-10", 80), p("2019-03-01", 78), p("2019-03-20", 77)];
+
+    expect(filtrarPeriodo(de2019, "30d", "2019-03-20").map((x) => x.dia)).toEqual([
+      "2019-03-01",
+      "2019-03-20",
+    ]);
+    expect(filtrarPeriodo(de2019, "90d", "2019-03-20")).toHaveLength(3);
+
+    // Ancorado em hoje, como era antes: nada. É o gráfico vazio que apareceu.
+    expect(filtrarPeriodo(de2019, "90d", "2026-10-15")).toEqual([]);
+  });
+
+  it("projeto mais curto que a janela não é recortado", () => {
+    // Não há o que esconder, e devolver menos seria esconder.
+    const curto = [p("2022-03-12", 70), p("2022-04-03", 66.9)];
+    expect(filtrarPeriodo(curto, "30d", "2022-04-03")).toHaveLength(2);
   });
 });
 
