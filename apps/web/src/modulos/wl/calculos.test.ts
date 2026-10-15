@@ -47,7 +47,14 @@ const umaOpcao = (pontos: number, ativa = true): Opcao => ({
   ordem: 0,
 });
 
-const p = (data: string, pesoKg: number): Pesagem => ({ data, pesoKg, nota: null });
+// `padronizada` entra com o padrão do caso normal, para os testes que não se
+// interessam por ela não precisarem repeti-la em cada linha.
+const p = (data: string, pesoKg: number, padronizada = true): Pesagem => ({
+  data,
+  pesoKg,
+  padronizada,
+  nota: null,
+});
 
 describe("lerPeso", () => {
   it("aceita vírgula e ponto como decimal", () => {

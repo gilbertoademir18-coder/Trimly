@@ -17,11 +17,21 @@ datasource db {
 /// anterior em vez de criar ruído no gráfico.
 model WlPesagem {
   /// O dia da pesagem, como dia do calendário (DATE, sem hora nem fuso).
-  data     DateTime @id @db.Date
-  pesoKg   Decimal  @map("peso_kg") @db.Decimal(5, 2)
-  nota     String?
-  criadoEm DateTime @default(now()) @map("criado_em") @db.Timestamptz
-  editadoEm DateTime @updatedAt @map("editado_em") @db.Timestamptz
+  data        DateTime @id @db.Date
+  pesoKg      Decimal  @map("peso_kg") @db.Decimal(5, 2)
+  /// Pesagem feita nas condições de sempre: de manhã, depois do banheiro, sem
+  /// ter comido, sem roupa e na mesma balança.
+  ///
+  /// Serve para saber quais números comparam entre si. Pesagem à tarde, de
+  /// roupa e depois do almoço vem um quilo acima sem nada ter mudado no corpo —
+  /// ela conta como registro, mas não como medida.
+  ///
+  /// Padrão `true` porque é o caso normal, o mesmo que o formulário assume:
+  /// desmarca-se na exceção.
+  padronizada Boolean  @default(true)
+  nota        String?
+  criadoEm    DateTime @default(now()) @map("criado_em") @db.Timestamptz
+  editadoEm   DateTime @updatedAt @map("editado_em") @db.Timestamptz
 
   @@map("wl_pesagem")
 }
@@ -208,9 +218,9 @@ model WlDia {
 /// UTC, e um jejum começado às 21h de Brasília cairia no dia seguinte se a
 /// data fosse tirada do timestamp.
 model WlJejum {
-  id     Int       @id @default(autoincrement())
-  dia    DateTime  @db.Date
-  inicio DateTime  @db.Timestamptz
+  id     Int      @id @default(autoincrement())
+  dia    DateTime @db.Date
+  inicio DateTime @db.Timestamptz
 
   /// `null` enquanto o jejum corre. Só um pode estar aberto por vez — quem
   /// garante é um índice único parcial, criado à mão na migração.

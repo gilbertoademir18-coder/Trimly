@@ -211,6 +211,7 @@ function FormPesagem({
 }) {
   const [dia, setDia] = useState(pesagem?.data ?? hoje);
   const [peso, setPeso] = useState(pesagem ? formatarPeso(pesagem.pesoKg) : "");
+  const [padronizada, setPadronizada] = useState(pesagem?.padronizada ?? true);
   const [nota, setNota] = useState(pesagem?.nota ?? "");
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -225,7 +226,7 @@ function FormPesagem({
     setSalvando(true);
     setErro(null);
     try {
-      await wlApi.salvarPesagem(dia, kg, nota.trim() || null);
+      await wlApi.salvarPesagem(dia, { pesoKg: kg, padronizada, nota: nota.trim() || null });
       await aoSalvar();
     } catch (e) {
       setErro((e as Error).message);
@@ -274,6 +275,25 @@ function FormPesagem({
         maxLength={500}
         className="mt-2 w-full rounded-xl border border-borda bg-fundo px-3 py-2 text-sm outline-none focus:border-destaque"
       />
+      {/*
+        As condições vão escritas embaixo, e não só no nome do campo: "padronizada"
+        não lembra a ninguém quais são as cinco, e é justamente na hora de marcar
+        que a lista importa.
+      */}
+      <label className="mt-3 flex items-start gap-2">
+        <input
+          type="checkbox"
+          checked={padronizada}
+          onChange={(e) => setPadronizada(e.target.checked)}
+          className="mt-0.5 size-4 shrink-0"
+        />
+        <span className="text-sm">
+          Pesagem padronizada
+          <span className="block text-xs text-tinta-3">
+            De manhã, depois do banheiro, sem ter comido, sem roupa e na mesma balança.
+          </span>
+        </span>
+      </label>
       {erro && <p className="mt-2 text-sm text-perigo">{erro}</p>}
       <div className="mt-3 flex gap-2">
         <button
@@ -355,6 +375,14 @@ function Historico({
                   <span className="text-tinta-2">{formatarDia(p.data, true)}</span>
                   <span className="ml-3 font-medium">{formatarPeso(p.pesoKg)} kg</span>
                   {anterior && <span className="ml-2 text-xs text-tinta-3">{formatarVariacao(p.pesoKg - anterior.pesoKg)}</span>}
+                  {!p.padronizada && (
+                    <span
+                      title="Fora das condições de sempre (de manhã, depois do banheiro, sem ter comido, sem roupa, na mesma balança): este número não compara com os outros."
+                      className="ml-2 rounded px-1.5 py-0.5 text-[0.625rem] text-tinta-3 ring-1 ring-borda"
+                    >
+                      fora do padrão
+                    </span>
+                  )}
                 </div>
                 {p.nota && <div className="truncate text-xs text-tinta-3">{p.nota}</div>}
               </div>

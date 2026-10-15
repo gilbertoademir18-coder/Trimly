@@ -3,7 +3,21 @@
  * — "hoje" entra como parâmetro, e é isso que deixa os testes determinísticos.
  */
 
-export type Pesagem = { data: string; pesoKg: number; nota: string | null };
+/**
+ * Uma pesagem.
+ *
+ * `padronizada` diz que ela foi feita nas condições de sempre: de manhã,
+ * depois do banheiro, sem ter comido, sem roupa e na mesma balança. É o que
+ * separa os números que comparam entre si dos que só registram — uma pesagem
+ * à tarde, de roupa e depois do almoço vem um quilo acima sem nada ter
+ * mudado no corpo.
+ */
+export type Pesagem = {
+  data: string;
+  pesoKg: number;
+  padronizada: boolean;
+  nota: string | null;
+};
 export type Meta = { pesoAlvo: number; alturaCm: number | null };
 
 /**

@@ -21,8 +21,13 @@ export type GrupoNovo = Omit<Grupo, "id">;
 
 export const wlApi = {
   pesagens: () => api<Pesagem[]>("/wl/pesagens"),
-  salvarPesagem: (dia: string, pesoKg: number, nota: string | null) =>
-    api<Pesagem>(`/wl/pesagens/${dia}`, { method: "PUT", corpo: { pesoKg, nota } }),
+  /**
+   * O dia vai no caminho, porque é a identidade do registro; o resto, num
+   * objeto. Posicional, o `padronizada` seria um quarto booleano solto na
+   * chamada, do tipo que ninguém lê sem voltar até aqui.
+   */
+  salvarPesagem: (dia: string, dados: Omit<Pesagem, "data">) =>
+    api<Pesagem>(`/wl/pesagens/${dia}`, { method: "PUT", corpo: dados }),
   apagarPesagem: (dia: string) => api<void>(`/wl/pesagens/${dia}`, { method: "DELETE" }),
   meta: () => api<Meta | null>("/wl/meta"),
   salvarMeta: (meta: Meta) => api<Meta>("/wl/meta", { method: "PUT", corpo: meta }),

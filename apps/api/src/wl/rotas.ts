@@ -22,6 +22,14 @@ const Peso = z
 
 const CorpoPesagem = z.object({
   pesoKg: Peso,
+  /*
+   * Pesagem nas condições de sempre: de manhã, depois do banheiro, sem ter
+   * comido, sem roupa e na mesma balança.
+   *
+   * `default(true)` porque é o caso normal e é o que o formulário manda; o
+   * padrão também cobre um cliente antigo, que não conhece o campo.
+   */
+  padronizada: z.boolean().default(true),
   nota: z
     .string()
     .trim()
@@ -40,12 +48,18 @@ const CorpoMeta = z.object({
     .nullish(),
 });
 
-type LinhaPesagem = { data: Date; pesoKg: { toNumber(): number }; nota: string | null };
+type LinhaPesagem = {
+  data: Date;
+  pesoKg: { toNumber(): number };
+  padronizada: boolean;
+  nota: string | null;
+};
 type LinhaMeta = { pesoAlvo: { toNumber(): number }; alturaCm: number | null };
 
 const pesagemParaJson = (p: LinhaPesagem) => ({
   data: dateParaDia(p.data),
   pesoKg: p.pesoKg.toNumber(),
+  padronizada: p.padronizada,
   nota: p.nota,
 });
 
