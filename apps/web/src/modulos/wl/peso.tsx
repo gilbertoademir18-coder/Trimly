@@ -207,13 +207,23 @@ export function PaginaPeso() {
                 <Numero
                   rotulo="Desde o início"
                   valor={`${formatarVariacao(resumo.variacao)} kg`}
+                  segundo={`${formatarVariacao(emLibras(resumo.variacao))} lb`}
                   detalhe={`em ${formatarDias(diasDoProjeto(emFoco)!)}`}
                 />
                 {resumo.faltam !== null && (
                   <Numero
                     rotulo={resumo.faltam > 0 ? "Faltam" : "Meta"}
                     valor={resumo.faltam > 0 ? `${formatarPeso(resumo.faltam)} kg` : "Atingida"}
-                    detalhe={`meta de ${formatarPeso(projetoAberto!.pesoAlvo!)} kg`}
+                    /*
+                     * Sem segunda unidade quando o card diz "Atingida": ali o valor
+                     * não é um peso, e "Atingida 0 lb" não quer dizer nada.
+                     */
+                    segundo={
+                      resumo.faltam > 0
+                        ? `${formatarPeso(emLibras(resumo.faltam))} lb`
+                        : undefined
+                    }
+                    detalhe={`meta de ${formatarPeso(projetoAberto!.pesoAlvo!)} kg · ${formatarPeso(emLibras(projetoAberto!.pesoAlvo!))} lb`}
                   />
                 )}
               </section>
@@ -932,9 +942,16 @@ function CartaoProjeto({
       <div className="flex items-baseline justify-between gap-2">
         <h2 className="min-w-0 truncate font-medium">{projeto.nome}</h2>
         <span className="tabular shrink-0 text-sm text-tinta-2">
-          {projeto.pesoAlvo === null
-            ? "sem meta"
-            : `meta ${formatarPeso(projeto.pesoAlvo)} kg`}
+          {projeto.pesoAlvo === null ? (
+            "sem meta"
+          ) : (
+            <>
+              meta {formatarPeso(projeto.pesoAlvo)} kg{" "}
+              <span className="text-xs text-tinta-3">
+                {formatarPeso(emLibras(projeto.pesoAlvo))} lb
+              </span>
+            </>
+          )}
         </span>
       </div>
 
