@@ -288,6 +288,9 @@ function FormPesagem({
           className="mt-0.5 size-4 shrink-0"
         />
         <span className="text-sm">
+          <span aria-hidden="true" className="text-destaque">
+            ★
+          </span>{" "}
           Pesagem padronizada
           <span className="block text-xs text-tinta-3">
             De manhã, depois do banheiro, sem ter comido, sem roupa e na mesma balança.
@@ -348,8 +351,40 @@ function Historico({
   aoErro: (msg: string) => void;
 }) {
   const [todas, setTodas] = useState(false);
+  /*
+   * Qual linha está indo para o servidor, pelo dia (que é o id da pesagem).
+   *
+   * Um dia e não um booleano: com um booleano, clicar numa estrela travaria
+   * todas as outras. Aqui só a linha em viagem fica surda ao clique, que é o
+   * que evita dois PUTs no mesmo dia se o dedo bater duas vezes.
+   */
+  const [salvando, setSalvando] = useState<string | null>(null);
   const recentes = [...pesagens].reverse();
   const visiveis = todas ? recentes : recentes.slice(0, 10);
+
+  /**
+   * Liga e desliga o "padronizada" de uma pesagem, direto na lista.
+   *
+   * Vai o registro inteiro com o campo trocado, e não só o campo: a API grava
+   * a pesagem toda (`CorpoPesagem` exige o peso), então mandar só o
+   * `padronizada` perderia o peso e a nota. É a mesma ideia do arquivar das
+   * ações — a edição de sempre, com um campo diferente.
+   */
+  async function alternar(p: Pesagem) {
+    setSalvando(p.data);
+    try {
+      await wlApi.salvarPesagem(p.data, {
+        pesoKg: p.pesoKg,
+        padronizada: !p.padronizada,
+        nota: p.nota,
+      });
+      await aoMudar();
+    } catch (e) {
+      aoErro((e as Error).message);
+    } finally {
+      setSalvando(null);
+    }
+  }
 
   async function apagar(p: Pesagem) {
     if (!confirm(`Apagar a pesagem de ${formatarDia(p.data, true)} (${formatarPeso(p.pesoKg)} kg)?`)) return;
@@ -370,19 +405,16 @@ function Historico({
           const anterior = recentes[i + 1];
           return (
             <li key={p.data} className="flex items-center gap-3 px-4 py-2.5">
+              <Estrela
+                pesagem={p}
+                salvando={salvando === p.data}
+                aoAlternar={() => void alternar(p)}
+              />
               <div className="min-w-0 flex-1">
                 <div className="tabular text-sm">
                   <span className="text-tinta-2">{formatarDia(p.data, true)}</span>
                   <span className="ml-3 font-medium">{formatarPeso(p.pesoKg)} kg</span>
                   {anterior && <span className="ml-2 text-xs text-tinta-3">{formatarVariacao(p.pesoKg - anterior.pesoKg)}</span>}
-                  {!p.padronizada && (
-                    <span
-                      title="Fora das condições de sempre (de manhã, depois do banheiro, sem ter comido, sem roupa, na mesma balança): este número não compara com os outros."
-                      className="ml-2 rounded px-1.5 py-0.5 text-[0.625rem] text-tinta-3 ring-1 ring-borda"
-                    >
-                      fora do padrão
-                    </span>
-                  )}
                 </div>
                 {p.nota && <div className="truncate text-xs text-tinta-3">{p.nota}</div>}
               </div>
@@ -402,6 +434,52 @@ function Historico({
         </button>
       )}
     </section>
+  );
+}
+
+/**
+ * A estrela que liga e desliga o "padronizada" de uma pesagem.
+ *
+ * Cheia é padronizada, vazia é fora do padrão — o par ★/☆ do favoritar, que
+ * é onde a ideia foi buscada: vê-se o estado e muda-se no mesmo toque, sem
+ * abrir a janela de edição.
+ *
+ * `aria-pressed` e não um texto que muda: para o leitor de tela isto é um
+ * botão que está ligado ou desligado, e é esse o par que ele anuncia. O
+ * glifo fica `aria-hidden` porque "estrela branca" não diz nada de útil.
+ */
+function Estrela({
+  pesagem,
+  salvando,
+  aoAlternar,
+}: {
+  pesagem: Pesagem;
+  salvando: boolean;
+  aoAlternar: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={aoAlternar}
+      disabled={salvando}
+      aria-pressed={pesagem.padronizada}
+      aria-label={`Pesagem padronizada em ${formatarDia(pesagem.data, true)}`}
+      title={
+        pesagem.padronizada
+          ? "Pesagem padronizada: de manhã, depois do banheiro, sem ter comido, sem roupa, na mesma balança. Clique para marcar como fora do padrão."
+          : "Fora do padrão: este número não compara com os outros. Clique para marcar como padronizada."
+      }
+      // Caixa de tamanho fixo, com o glifo centrado: ★ e ☆ não têm a mesma
+      // largura em toda fonte, e sem isso a linha toda dançava de lado a cada
+      // troca. As 2rem também dão um alvo de dedo decente — o glifo sozinho
+      // tem uns 11px de área clicável, que no celular é pedir para errar.
+      className={
+        "flex size-8 shrink-0 items-center justify-center rounded text-lg leading-none disabled:opacity-40 " +
+        (pesagem.padronizada ? "text-destaque" : "text-tinta-3 hover:text-tinta-2")
+      }
+    >
+      <span aria-hidden="true">{pesagem.padronizada ? "★" : "☆"}</span>
+    </button>
   );
 }
 
