@@ -23,9 +23,26 @@ export type Pesagem = {
   medidoEm: string;
   pesoKg: number;
   padronizada: boolean;
+  /** `null` é pesagem fora de projeto: as importadas, antes de repartidas. */
+  projetoId: number | null;
   nota: string | null;
 };
-export type Meta = { pesoAlvo: number; alturaCm: number | null };
+/**
+ * Os dados da pessoa, que não são de projeto nenhum.
+ *
+ * Só a altura, e só porque o IMC precisa dela. O peso alvo saiu daqui e virou
+ * campo de cada projeto: 75 kg hoje podem ter sido 70 em 2019.
+ */
+export type Perfil = { alturaCm: number | null };
+
+/**
+ * Um projeto de perda de peso: um trecho da vida com uma meta própria.
+ *
+ * Sem datas de propósito — o período é a primeira e a última pesagem dele,
+ * calculado por `periodoDoProjeto`. Datas cadastradas poderiam discordar das
+ * pesagens, e aí haveria duas versões da mesma verdade.
+ */
+export type Projeto = { id: number; nome: string; pesoAlvo: number; nota: string | null };
 
 /**
  * Lê o peso como a pessoa digita: `72,5`, `72.5`, ` 72 `. Devolve `null` para
@@ -85,23 +102,35 @@ export type Resumo = {
 /**
  * O retrato do momento. `pesagens` precisa estar em ordem crescente de data,
  * que é como a API entrega.
+ *
+ * O alvo e a altura entram separados porque vêm de lugares diferentes: o alvo
+ * é do projeto que está sendo olhado, a altura é da pessoa. Juntá-los num
+ * objeto só esconderia que mexer num não mexe no outro.
+ *
+ * Com `pesoAlvo` nulo (o caso de "sem projeto", que não tem meta) o resumo
+ * ainda vale: a variação e o IMC não dependem de alvo. Só `faltam` e
+ * `progresso` ficam nulos, porque sem alvo não há o que faltar.
  */
-export function resumir(pesagens: Pesagem[], meta: Meta | null): Resumo | null {
+export function resumir(
+  pesagens: Pesagem[],
+  pesoAlvo: number | null,
+  alturaCm: number | null,
+): Resumo | null {
   const inicial = pesagens[0];
   const atual = pesagens.at(-1);
   if (!inicial || !atual) return null;
 
   let faltam: number | null = null;
   let progresso: number | null = null;
-  if (meta) {
-    faltam = atual.pesoKg - meta.pesoAlvo;
-    const caminho = inicial.pesoKg - meta.pesoAlvo;
+  if (pesoAlvo !== null) {
+    faltam = atual.pesoKg - pesoAlvo;
+    const caminho = inicial.pesoKg - pesoAlvo;
     // Começou já na meta (ou abaixo): não há caminho a percorrer, e dividir
     // por ele daria infinito. Estar na meta é 100%.
     progresso = caminho <= 0 ? 1 : limitar((inicial.pesoKg - atual.pesoKg) / caminho, 0, 1);
   }
 
-  const imc = meta?.alturaCm ? atual.pesoKg / (meta.alturaCm / 100) ** 2 : null;
+  const imc = alturaCm ? atual.pesoKg / (alturaCm / 100) ** 2 : null;
 
   return { atual, inicial, variacao: atual.pesoKg - inicial.pesoKg, faltam, progresso, imc };
 }
@@ -134,6 +163,48 @@ export function doCampoLocal(valor: string): string {
   return new Date(valor).toISOString();
 }
 
+/**
+ * As pesagens de um projeto, na ordem em que chegaram.
+ *
+ * `null` pede as que estão fora de projeto — não é um caso de borda, é a fila
+ * de trabalho: é ali que ficam as importadas de outro app até alguém decidir a
+ * que trecho pertencem.
+ */
+export function pesagensDoProjeto(pesagens: Pesagem[], projetoId: number | null): Pesagem[] {
+  return pesagens.filter((p) => p.projetoId === projetoId);
+}
+
+/**
+ * O período de um projeto: o dia da primeira e da última pesagem dele.
+ *
+ * Calculado e não cadastrado, que é a razão de o projeto não ter campos de
+ * data. Projeto sem pesagem nenhuma devolve `null` — ele existe (acabou de ser
+ * criado), mas ainda não tem período, e inventar um a partir da data de criação
+ * diria que o projeto começou num dia em que ninguém se pesou.
+ *
+ * Espera a lista em ordem crescente, como a API entrega.
+ */
+export function periodoDoProjeto(doProjeto: Pesagem[]): { de: string; ate: string } | null {
+  const primeira = doProjeto[0];
+  const ultima = doProjeto.at(-1);
+  if (!primeira || !ultima) return null;
+  return { de: primeira.dia, ate: ultima.dia };
+}
+
+/**
+ * Quantos dias o projeto durou, contando as pontas.
+ *
+ * Uma pesagem só é um dia, não zero: o projeto de um dia existiu. `null` sem
+ * pesagem nenhuma, pelo mesmo motivo de `periodoDoProjeto`.
+ */
+export function diasDoProjeto(doProjeto: Pesagem[]): number | null {
+  const periodo = periodoDoProjeto(doProjeto);
+  if (!periodo) return null;
+  const ms = new Date(periodo.ate + "T12:00:00Z").getTime() - new Date(periodo.de + "T12:00:00Z").getTime();
+  // Meio-dia nas duas pontas: em fuso negativo, a meia-noite local cai no dia
+  // anterior em UTC, e a conta erraria por um dia conforme a hora da máquina.
+  return Math.round(ms / 86400000) + 1;
+}
 export type Periodo = "30d" | "90d" | "tudo";
 
 /** As pesagens dos últimos N dias, contando a partir de `hoje`. */

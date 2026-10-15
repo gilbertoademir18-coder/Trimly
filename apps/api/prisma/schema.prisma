@@ -13,6 +13,35 @@ datasource db {
   provider = "postgresql"
 }
 
+/// Um projeto de perda de peso: um trecho da vida com uma meta própria.
+///
+/// O histórico de peso não é uma linha só. Passam-se meses sem pesar e depois
+/// começa-se de novo, de outro ponto de partida e com outra meta — comparar o
+/// peso de hoje com o de três anos atrás não responde pergunta nenhuma. O
+/// projeto é o recorte dentro do qual a conta significa algo.
+///
+/// O período NÃO é cadastrado: ele é a primeira e a última pesagem do projeto.
+/// Datas próprias abririam a porta para o projeto dizer uma coisa e as pesagens
+/// dele outra, e não há como as duas versões discordarem se só existe uma.
+model WlProjeto {
+  id   Int    @id @default(autoincrement())
+  nome String
+
+  /// A meta de peso deste projeto. Cada um tem a sua — 75 kg hoje podem ter
+  /// sido 70 em 2019, e cobrar o passado pela meta de agora falsearia o
+  /// progresso de todo mundo.
+  pesoAlvo Decimal @map("peso_alvo") @db.Decimal(5, 2)
+
+  nota String?
+
+  criadoEm  DateTime @default(now()) @map("criado_em") @db.Timestamptz
+  editadoEm DateTime @updatedAt @map("editado_em") @db.Timestamptz
+
+  pesagens WlPesagem[]
+
+  @@map("wl_projeto")
+}
+
 /// Uma pesagem.
 ///
 /// Várias por dia são permitidas: pesar de manhã e de novo à noite são dois
@@ -45,10 +74,22 @@ model WlPesagem {
   /// desmarca-se na exceção.
   padronizada Boolean @default(true)
 
+  /// O projeto a que a pesagem pertence.
+  ///
+  /// `null` é pesagem fora de projeto, e é um estado legítimo: é onde estão as
+  /// 102 importadas de outro app enquanto não forem repartidas. Fingir um
+  /// projeto para elas seria inventar um recorte que ninguém decidiu.
+  projetoId Int?       @map("projeto_id")
+  projeto   WlProjeto? @relation(fields: [projetoId], references: [id], onDelete: SetNull)
+
   nota      String?
   criadoEm  DateTime @default(now()) @map("criado_em") @db.Timestamptz
   editadoEm DateTime @updatedAt @map("editado_em") @db.Timestamptz
 
+  // SetNull e não Cascade nem Restrict: apagar um projeto não pode levar as
+  // pesagens dele embora — elas são fatos, e o projeto é só o agrupamento que
+  // alguém escolheu. Soltas, voltam para "sem projeto" e podem ser reagrupadas.
+  @@index([projetoId])
   // Por `medidoEm` porque é a ordem em que a lista e o gráfico sempre pedem;
   // por `dia` porque o calendário e os filtros de período recortam por ele.
   @@index([medidoEm])
@@ -56,14 +97,19 @@ model WlPesagem {
   @@map("wl_pesagem")
 }
 
-/// A meta do WL. Linha única (id sempre 1): é um app de uma pessoa só.
-model WlMeta {
+/// Os dados da pessoa, que não pertencem a projeto nenhum. Linha única (id
+/// sempre 1): é um app de uma pessoa só.
+///
+/// Isto era `WlMeta` e guardava também o peso alvo. O alvo passou a ser de cada
+/// projeto, e o que sobrou aqui é a altura — anatomia, não objetivo, e é só
+/// dela que o IMC precisa. O nome mudou junto: uma tabela chamada "meta" sem
+/// meta nenhuma dentro mentiria para quem lesse o schema.
+model WlPerfil {
   id        Int      @id @default(1)
-  pesoAlvo  Decimal  @map("peso_alvo") @db.Decimal(5, 2)
   alturaCm  Int?     @map("altura_cm")
   editadoEm DateTime @updatedAt @map("editado_em") @db.Timestamptz
 
-  @@map("wl_meta")
+  @@map("wl_perfil")
 }
 
 /// Uma ação que entra na pontuação do dia: `pontos` positivo soma, negativo

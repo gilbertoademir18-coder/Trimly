@@ -113,7 +113,7 @@ export function PaginaWl() {
         />
 
         <nav className="order-last grid gap-3 sm:grid-cols-3 lg:order-none lg:grid-cols-1">
-          <Atalho rota="/wl/peso" nome="Peso" descricao="Pesagens, meta, IMC e o gráfico." />
+          <Atalho rota="/wl/peso" nome="Peso" descricao="Projetos, pesagens, IMC e o gráfico." />
           <Atalho
             rota="/wl/acoes"
             nome="Ações"

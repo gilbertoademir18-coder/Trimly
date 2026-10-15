@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   diaLocal,
+  diasDoProjeto,
   faixaDaPontuacao,
   filtrarPeriodo,
   formatarVariacao,
@@ -13,6 +14,8 @@ import {
   ordenarAcoes,
   podeSomar,
   pontosPossiveis,
+  periodoDoProjeto,
+  pesagensDoProjeto,
   pontuarDia,
   reordenar,
   reordenarSubconjunto,
@@ -62,13 +65,14 @@ let proximoId = 1;
 const p = (
   dia: string,
   pesoKg: number,
-  { padronizada = true, hora = "12:00" } = {},
+  { padronizada = true, hora = "12:00", projetoId = null as number | null } = {},
 ): Pesagem => ({
   id: proximoId++,
   dia,
   medidoEm: new Date(`${dia}T${hora}`).toISOString(),
   pesoKg,
   padronizada,
+  projetoId,
   nota: null,
 });
 
@@ -107,11 +111,11 @@ describe("resumir", () => {
   const serie = [p("2026-09-01", 90), p("2026-09-15", 87), p("2026-09-30", 85)];
 
   it("devolve null sem pesagens", () => {
-    expect(resumir([], null)).toBeNull();
+    expect(resumir([], null, null)).toBeNull();
   });
 
   it("calcula variação, quanto falta e progresso", () => {
-    const r = resumir(serie, { pesoAlvo: 80, alturaCm: null })!;
+    const r = resumir(serie, 80, null)!;
     expect(r.variacao).toBe(-5);
     expect(r.faltam).toBe(5);
     expect(r.progresso).toBe(0.5);
@@ -119,16 +123,16 @@ describe("resumir", () => {
   });
 
   it("limita o progresso entre 0 e 100%", () => {
-    expect(resumir([p("2026-09-01", 90), p("2026-09-02", 92)], { pesoAlvo: 80, alturaCm: null })!.progresso).toBe(0);
-    expect(resumir([p("2026-09-01", 90), p("2026-09-02", 78)], { pesoAlvo: 80, alturaCm: null })!.progresso).toBe(1);
+    expect(resumir([p("2026-09-01", 90), p("2026-09-02", 92)], 80, null)!.progresso).toBe(0);
+    expect(resumir([p("2026-09-01", 90), p("2026-09-02", 78)], 80, null)!.progresso).toBe(1);
   });
 
   it("não divide por zero quando já começou na meta", () => {
-    expect(resumir([p("2026-09-01", 80)], { pesoAlvo: 80, alturaCm: null })!.progresso).toBe(1);
+    expect(resumir([p("2026-09-01", 80)], 80, null)!.progresso).toBe(1);
   });
 
   it("calcula o IMC quando há altura", () => {
-    expect(resumir(serie, { pesoAlvo: 80, alturaCm: 180 })!.imc).toBeCloseTo(26.23, 2);
+    expect(resumir(serie, 80, 180)!.imc).toBeCloseTo(26.23, 2);
   });
 });
 
@@ -157,13 +161,13 @@ describe("várias pesagens no mesmo dia", () => {
   ];
 
   it("o peso atual é a última pesagem no tempo, não a primeira do dia", () => {
-    const r = resumir(doisNoDia, null)!;
+    const r = resumir(doisNoDia, null, null)!;
     expect(r.atual.pesoKg).toBe(86.4);
     expect(r.atual.medidoEm).toBe(doisNoDia[2]!.medidoEm);
   });
 
   it("a variação conta da primeira à última, atravessando o dia repetido", () => {
-    expect(resumir(doisNoDia, null)!.variacao).toBeCloseTo(-3.6, 10);
+    expect(resumir(doisNoDia, null, null)!.variacao).toBeCloseTo(-3.6, 10);
   });
 
   it("o filtro de período leva as duas do mesmo dia ou nenhuma", () => {
@@ -180,6 +184,98 @@ describe("várias pesagens no mesmo dia", () => {
     const tardia = p("2026-09-30", 85, { hora: "22:30" });
     expect(tardia.dia).toBe("2026-09-30");
     expect(filtrarPeriodo([tardia], "30d", "2026-09-30")).toHaveLength(1);
+  });
+});
+
+describe("os recortes de projeto", () => {
+  /*
+   * A forma que o histórico de verdade tem: dois projetos e um punhado de
+   * pesagens soltas — as importadas de outro app, que ainda não foram
+   * repartidas. As soltas são a razão de `projetoId` aceitar nulo.
+   */
+  const lista = [
+    p("2019-03-01", 80, { projetoId: null }),
+    p("2019-03-10", 79, { projetoId: null }),
+    p("2026-10-03", 95.9, { projetoId: 7 }),
+    p("2026-10-15", 92.3, { projetoId: 7 }),
+    p("2026-10-20", 91, { projetoId: 9 }),
+  ];
+
+  describe("pesagensDoProjeto", () => {
+    it("recorta pelo projeto", () => {
+      expect(pesagensDoProjeto(lista, 7).map((x) => x.pesoKg)).toEqual([95.9, 92.3]);
+      expect(pesagensDoProjeto(lista, 9).map((x) => x.pesoKg)).toEqual([91]);
+    });
+
+    it("com null traz as que estão fora de projeto", () => {
+      // Não é caso de borda: é a fila de trabalho de quem vai repartir o
+      // histórico importado em projetos.
+      expect(pesagensDoProjeto(lista, null).map((x) => x.pesoKg)).toEqual([80, 79]);
+    });
+
+    it("projeto sem pesagem devolve lista vazia", () => {
+      expect(pesagensDoProjeto(lista, 999)).toEqual([]);
+    });
+
+    it("não altera a lista recebida", () => {
+      const antes = [...lista];
+      pesagensDoProjeto(lista, 7);
+      expect(lista).toEqual(antes);
+    });
+  });
+
+  describe("periodoDoProjeto", () => {
+    it("vai da primeira à última pesagem", () => {
+      expect(periodoDoProjeto(pesagensDoProjeto(lista, 7))).toEqual({
+        de: "2026-10-03",
+        ate: "2026-10-15",
+      });
+    });
+
+    it("uma pesagem só começa e termina no mesmo dia", () => {
+      expect(periodoDoProjeto(pesagensDoProjeto(lista, 9))).toEqual({
+        de: "2026-10-20",
+        ate: "2026-10-20",
+      });
+    });
+
+    it("devolve null sem pesagem nenhuma", () => {
+      // O projeto acabou de ser criado: existe, mas ainda não tem período. Dar
+      // a ele a data de criação diria que começou num dia em que ninguém pesou.
+      expect(periodoDoProjeto([])).toBeNull();
+    });
+  });
+
+  describe("diasDoProjeto", () => {
+    it("conta as duas pontas", () => {
+      // 03 a 15 de outubro são 13 dias contando os dois extremos.
+      expect(diasDoProjeto(pesagensDoProjeto(lista, 7))).toBe(13);
+    });
+
+    it("uma pesagem só é um dia, não zero", () => {
+      expect(diasDoProjeto(pesagensDoProjeto(lista, 9))).toBe(1);
+    });
+
+    it("atravessa a virada do ano", () => {
+      const virada = [p("2025-12-30", 90, { projetoId: 1 }), p("2026-01-02", 89, { projetoId: 1 })];
+      expect(diasDoProjeto(virada)).toBe(4);
+    });
+
+    it("devolve null sem pesagem nenhuma", () => {
+      expect(diasDoProjeto([])).toBeNull();
+    });
+  });
+
+  describe("resumir sem meta", () => {
+    it("dá variação e IMC, mas não faltam nem progresso", () => {
+      // É o caso de "sem projeto" e de "tudo": um apanhado, não uma tentativa
+      // com objetivo. Sem alvo não há o que faltar, mas o peso ainda variou.
+      const r = resumir(pesagensDoProjeto(lista, null), null, 180)!;
+      expect(r.variacao).toBe(-1);
+      expect(r.faltam).toBeNull();
+      expect(r.progresso).toBeNull();
+      expect(r.imc).toBeCloseTo(24.38, 2);
+    });
   });
 });
 

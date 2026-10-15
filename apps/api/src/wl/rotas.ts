@@ -40,6 +40,12 @@ const CorpoPesagem = z.object({
    * padrão também cobre um cliente antigo, que não conhece o campo.
    */
   padronizada: z.boolean().default(true),
+  /*
+   * Nulo é pesagem fora de projeto — o estado das importadas, enquanto não
+   * forem repartidas. O padrão é nulo e não o projeto em andamento: filiar
+   * sozinho é decisão, e a decisão é da tela, que sabe qual projeto está aberto.
+   */
+  projetoId: z.number().int().min(1).nullish().transform((i) => i ?? null),
   nota: z
     .string()
     .trim()
@@ -48,8 +54,12 @@ const CorpoPesagem = z.object({
     .transform((n) => n || null),
 });
 
-const CorpoMeta = z.object({
-  pesoAlvo: Peso,
+/*
+ * O perfil guarda só a altura. O peso alvo saiu daqui e virou campo de cada
+ * projeto: 75 kg hoje podem ter sido 70 em 2019, e uma meta só para todo o
+ * histórico falsearia o progresso de cada trecho.
+ */
+const CorpoPerfil = z.object({
   alturaCm: z
     .number()
     .int("em centímetros, sem vírgula")
@@ -58,15 +68,33 @@ const CorpoMeta = z.object({
     .nullish(),
 });
 
+const CorpoProjeto = z.object({
+  nome: z.string().trim().min(1, "diga o nome do projeto").max(80, "no máximo 80 caracteres"),
+  pesoAlvo: Peso,
+  nota: z
+    .string()
+    .trim()
+    .max(500, "no máximo 500 caracteres")
+    .nullish()
+    .transform((n) => n || null),
+});
+
 type LinhaPesagem = {
   id: number;
   dia: Date;
   medidoEm: Date;
   pesoKg: { toNumber(): number };
   padronizada: boolean;
+  projetoId: number | null;
   nota: string | null;
 };
-type LinhaMeta = { pesoAlvo: { toNumber(): number }; alturaCm: number | null };
+type LinhaPerfil = { alturaCm: number | null };
+type LinhaProjeto = {
+  id: number;
+  nome: string;
+  pesoAlvo: { toNumber(): number };
+  nota: string | null;
+};
 
 const pesagemParaJson = (p: LinhaPesagem) => ({
   id: p.id,
@@ -74,10 +102,23 @@ const pesagemParaJson = (p: LinhaPesagem) => ({
   medidoEm: p.medidoEm.toISOString(),
   pesoKg: p.pesoKg.toNumber(),
   padronizada: p.padronizada,
+  projetoId: p.projetoId,
   nota: p.nota,
 });
 
-const metaParaJson = (m: LinhaMeta) => ({ pesoAlvo: m.pesoAlvo.toNumber(), alturaCm: m.alturaCm });
+const perfilParaJson = (p: LinhaPerfil) => ({ alturaCm: p.alturaCm });
+
+/*
+ * O período do projeto não sai daqui: ele é a primeira e a última pesagem, e
+ * quem monta isso é a tela, que já tem as pesagens em mão. Agregar por projeto
+ * a cada listagem repetiria um dado que o cliente deriva de graça.
+ */
+const projetoParaJson = (p: LinhaProjeto) => ({
+  id: p.id,
+  nome: p.nome,
+  pesoAlvo: p.pesoAlvo.toNumber(),
+  nota: p.nota,
+});
 
 // Pontos cabem em DECIMAL(5,2) e o sinal é quem diz se a ação soma ou
 // desconta. Zero é barrado aqui e no banco: ação que não vale nada só ocupa
@@ -523,22 +564,72 @@ export async function rotasWl(app: FastifyInstance) {
     await prisma.wlPesagem.deleteMany({ where: { id } });
     return reply.code(204).send();
   });
-  app.get("/meta", async () => {
-    const meta = await prisma.wlMeta.findUnique({ where: { id: 1 } });
-    return meta ? metaParaJson(meta) : null;
+  app.get("/perfil", async () => {
+    const perfil = await prisma.wlPerfil.findUnique({ where: { id: 1 } });
+    return perfil ? perfilParaJson(perfil) : null;
   });
 
-  app.put("/meta", async (req, reply) => {
-    const corpo = CorpoMeta.safeParse(req.body);
+  app.put("/perfil", async (req, reply) => {
+    const corpo = CorpoPerfil.safeParse(req.body);
     if (!corpo.success) return reply.code(400).send({ erro: primeiroErro(corpo.error) });
 
-    const dados = { pesoAlvo: corpo.data.pesoAlvo, alturaCm: corpo.data.alturaCm ?? null };
-    const meta = await prisma.wlMeta.upsert({
+    const dados = { alturaCm: corpo.data.alturaCm ?? null };
+    const perfil = await prisma.wlPerfil.upsert({
       where: { id: 1 },
       create: { id: 1, ...dados },
       update: dados,
     });
-    return metaParaJson(meta);
+    return perfilParaJson(perfil);
+  });
+
+  // -------------------------------------------------------------------------
+  // Projetos
+
+  /*
+   * Do mais novo para o mais velho: é a ordem em que a tela os oferece, e o
+   * projeto em andamento é quase sempre o que se quer ver.
+   */
+  app.get("/projetos", async () => {
+    const projetos = await prisma.wlProjeto.findMany({ orderBy: { id: "desc" } });
+    return projetos.map(projetoParaJson);
+  });
+
+  app.post("/projetos", async (req, reply) => {
+    const corpo = CorpoProjeto.safeParse(req.body);
+    if (!corpo.success) return reply.code(400).send({ erro: primeiroErro(corpo.error) });
+
+    const projeto = await prisma.wlProjeto.create({ data: corpo.data });
+    return reply.code(201).send(projetoParaJson(projeto));
+  });
+
+  app.put<{ Params: { id: string } }>("/projetos/:id", async (req, reply) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id < 1) return reply.code(400).send({ erro: "Id inválido." });
+    const corpo = CorpoProjeto.safeParse(req.body);
+    if (!corpo.success) return reply.code(400).send({ erro: primeiroErro(corpo.error) });
+
+    const existe = await prisma.wlProjeto.findUnique({ where: { id } });
+    if (!existe) return reply.code(404).send({ erro: "Projeto não encontrado." });
+
+    const projeto = await prisma.wlProjeto.update({ where: { id }, data: corpo.data });
+    return projetoParaJson(projeto);
+  });
+
+  /*
+   * Apagar o projeto SOLTA as pesagens dele, que voltam para sem projeto — é o
+   * `onDelete: SetNull` do schema. Elas são fatos; o projeto era o agrupamento
+   * que alguém escolheu, e desfazer um agrupamento não pode custar as medições.
+   *
+   * A resposta diz quantas foram soltas, para a tela avisar em vez de deixar a
+   * pessoa descobrir sozinha que o histórico se mexeu.
+   */
+  app.delete<{ Params: { id: string } }>("/projetos/:id", async (req, reply) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id < 1) return reply.code(400).send({ erro: "Id inválido." });
+
+    const soltas = await prisma.wlPesagem.count({ where: { projetoId: id } });
+    await prisma.wlProjeto.deleteMany({ where: { id } });
+    return { soltas };
   });
 
   // -------------------------------------------------------------------------

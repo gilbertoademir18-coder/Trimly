@@ -1,5 +1,5 @@
 import { api } from "../../api.ts";
-import type { Acao, Dia, DiaResumido, Grupo, Meta, Pesagem } from "./calculos.ts";
+import type { Acao, Dia, DiaResumido, Grupo, Perfil, Pesagem, Projeto } from "./calculos.ts";
 import type { Jejum } from "./jejum-calculos.ts";
 
 /**
@@ -15,6 +15,9 @@ export type AcaoNova = Omit<Acao, "id" | "opcoes"> & {
 
 /** O que o formulário de pesagem manda: tudo menos o id, que é do banco. */
 export type PesagemNova = Omit<Pesagem, "id">;
+
+/** O que o cadastro de projeto envia. */
+export type ProjetoNovo = Omit<Projeto, "id">;
 
 /** O que o formulário de jejum manda. Instantes em ISO; o dia, em `AAAA-MM-DD`. */
 export type JejumNovo = Omit<Jejum, "id">;
@@ -36,8 +39,21 @@ export const wlApi = {
   salvarPesagem: (id: number, dados: PesagemNova) =>
     api<Pesagem>(`/wl/pesagens/${id}`, { method: "PUT", corpo: dados }),
   apagarPesagem: (id: number) => api<void>(`/wl/pesagens/${id}`, { method: "DELETE" }),
-  meta: () => api<Meta | null>("/wl/meta"),
-  salvarMeta: (meta: Meta) => api<Meta>("/wl/meta", { method: "PUT", corpo: meta }),
+  perfil: () => api<Perfil | null>("/wl/perfil"),
+  salvarPerfil: (perfil: Perfil) => api<Perfil>("/wl/perfil", { method: "PUT", corpo: perfil }),
+
+  projetos: () => api<Projeto[]>("/wl/projetos"),
+  criarProjeto: (p: ProjetoNovo) =>
+    api<Projeto>("/wl/projetos", { method: "POST", corpo: p }),
+  salvarProjeto: (id: number, p: ProjetoNovo) =>
+    api<Projeto>(`/wl/projetos/${id}`, { method: "PUT", corpo: p }),
+  /**
+   * Apagar solta as pesagens do projeto em vez de apagá-las — elas são fatos,
+   * e o projeto era só o agrupamento. A resposta diz quantas foram soltas,
+   * para a tela poder avisar.
+   */
+  apagarProjeto: (id: number) =>
+    api<{ soltas: number }>(`/wl/projetos/${id}`, { method: "DELETE" }),
 
   acoes: () => api<Acao[]>("/wl/acoes"),
   criarAcao: (acao: AcaoNova) => api<Acao>("/wl/acoes", { method: "POST", corpo: acao }),

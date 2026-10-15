@@ -4,49 +4,90 @@ import { wlApi } from "./api.ts";
 import { Aviso, CabecalhoInterno } from "./aviso.tsx";
 import {
   diaLocal,
+  diasDoProjeto,
   doCampoLocal,
   filtrarPeriodo,
   formatarDia,
+  formatarHora,
   formatarPeso,
   formatarVariacao,
-  formatarHora,
   lerPeso,
   paraCampoLocal,
+  periodoDoProjeto,
+  pesagensDoProjeto,
   resumir,
-  type Meta,
+  type Perfil,
   type Periodo,
   type Pesagem,
+  type Projeto,
 } from "./calculos.ts";
 import { GraficoPeso } from "./grafico.tsx";
 
 /**
- * O acompanhamento do peso: pesar, ver a evolução e ajustar a meta.
+ * Uma seleção na tela: um projeto, as pesagens fora de projeto, ou tudo.
+ *
+ * "Sem projeto" é item de primeira classe e não um resto: é lá que ficam as
+ * pesagens importadas de outro app, esperando ser repartidas em projetos.
+ */
+type Selecao = { tipo: "projeto"; id: number } | { tipo: "sem" } | { tipo: "tudo" };
+
+/**
+ * O acompanhamento do peso: pesar, ver a evolução e cuidar dos projetos.
  *
  * Fica numa tela própria porque é um assunto com ritmo diferente do resto do
  * WL — pesa-se uma vez por dia, de manhã, e marca-se ação o dia inteiro.
- * Juntas, as duas coisas davam uma rolagem longa demais no celular.
+ *
+ * Tudo o que se vê é de UM projeto por vez: os números, o gráfico e o
+ * histórico. É a razão de o projeto existir — comparar o peso de hoje com o de
+ * três anos atrás, de outra tentativa e outra meta, não responde pergunta
+ * nenhuma.
  */
 export function PaginaPeso() {
   const [pesagens, setPesagens] = useState<Pesagem[] | null>(null);
-  const [meta, setMeta] = useState<Meta | null>(null);
+  const [projetos, setProjetos] = useState<Projeto[]>([]);
+  const [perfil, setPerfil] = useState<Perfil | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  const [periodo, setPeriodo] = useState<Periodo>("90d");
+
   /*
-   * A janela do formulário: `null` é fechada, `{ pesagem: null }` é um
-   * registro novo e `{ pesagem }` é a correção de uma que já existe.
-   *
-   * Um estado só, e não um par "aberta?" + "qual pesagem?": com dois, dava
-   * para escrever o par impossível (fechada com pesagem dentro, aberta sem
-   * nada) e a janela abriria vazia quando devia corrigir.
+   * A janela da pesagem: `null` fechada, `{ pesagem: null }` registro novo e
+   * `{ pesagem }` a correção de uma que já existe.
    */
   const [edicao, setEdicao] = useState<{ pesagem: Pesagem | null } | null>(null);
-  const [periodo, setPeriodo] = useState<Periodo>("90d");
+  /** A janela do projeto, no mesmo feitio. */
+  const [edicaoProjeto, setEdicaoProjeto] = useState<{ projeto: Projeto | null } | null>(null);
+
+  /*
+   * Qual projeto está sendo olhado. `null` enquanto não se sabe — a escolha
+   * padrão só pode ser feita depois de a lista de projetos chegar, e começar
+   * em "tudo" faria a tela piscar do panorama para o projeto a cada carga.
+   */
+  const [selecao, setSelecao] = useState<Selecao | null>(null);
 
   const carregar = useCallback(async () => {
     try {
-      const [p, m] = await Promise.all([wlApi.pesagens(), wlApi.meta()]);
-      setPesagens(p);
-      setMeta(m);
+      const [ps, pjs, pf] = await Promise.all([
+        wlApi.pesagens(),
+        wlApi.projetos(),
+        wlApi.perfil(),
+      ]);
+      setPesagens(ps);
+      setProjetos(pjs);
+      setPerfil(pf);
       setErro(null);
+      /*
+       * A escolha padrão é o projeto mais novo (a API entrega em ordem
+       * decrescente de id). Sem projeto nenhum, cai em "sem projeto" se houver
+       * pesagem solta, e em "tudo" se nem isso.
+       *
+       * Só na primeira carga: depois disso, recarregar não pode arrastar a
+       * pessoa para outro projeto no meio do que ela estava olhando.
+       */
+      setSelecao((atual) => {
+        if (atual !== null) return atual;
+        if (pjs[0]) return { tipo: "projeto", id: pjs[0].id };
+        return ps.some((x) => x.projetoId === null) ? { tipo: "sem" } : { tipo: "tudo" };
+      });
     } catch (e) {
       setErro((e as Error).message);
     }
@@ -57,10 +98,25 @@ export function PaginaPeso() {
   }, [carregar]);
 
   if (erro && !pesagens) return <Aviso texto={erro} />;
-  if (!pesagens) return <p className="text-tinta-3">Carregando…</p>;
+  if (!pesagens || selecao === null) return <p className="text-tinta-3">Carregando…</p>;
 
   const hoje = diaLocal();
-  const resumo = resumir(pesagens, meta);
+  const projetoAberto =
+    selecao.tipo === "projeto" ? (projetos.find((x) => x.id === selecao.id) ?? null) : null;
+
+  /* As pesagens em foco: a lista inteira em "tudo", o recorte nas outras. */
+  const emFoco =
+    selecao.tipo === "tudo"
+      ? pesagens
+      : pesagensDoProjeto(pesagens, selecao.tipo === "sem" ? null : selecao.id);
+
+  /*
+   * O alvo é do projeto aberto. Em "sem projeto" e em "tudo" não há alvo: o que
+   * se olha ali não é uma tentativa com objetivo, é um apanhado. O resumo
+   * aguenta alvo nulo e devolve variação e IMC do mesmo jeito.
+   */
+  const resumo = resumir(emFoco, projetoAberto?.pesoAlvo ?? null, perfil?.alturaCm ?? null);
+  const soltas = pesagens.filter((x) => x.projetoId === null).length;
 
   return (
     <div className="space-y-5">
@@ -75,17 +131,31 @@ export function PaginaPeso() {
       </CabecalhoInterno>
       {erro && <Aviso texto={erro} />}
 
+      <SeletorDeProjeto
+        projetos={projetos}
+        pesagens={pesagens}
+        soltas={soltas}
+        selecao={selecao}
+        aoEscolher={setSelecao}
+        aoNovoProjeto={() => setEdicaoProjeto({ projeto: null })}
+      />
+
       {/*
         No desktop, duas colunas: à esquerda o que se digita e os números, à
         direita o gráfico e o histórico. No celular, a pilha de sempre — as
-        colunas são `contents` ali, e a meta desce para o fim com `order-last`.
+        colunas são `contents` ali, e o rodapé desce com `order-last`.
       */}
       <div className="flex flex-col gap-5 lg:grid lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:items-start">
         <div className="contents lg:flex lg:flex-col lg:gap-5">
           {resumo ? (
             <>
               <section className="grid grid-cols-2 gap-3">
-                <Numero rotulo="Peso atual" valor={`${formatarPeso(resumo.atual.pesoKg)} kg`} detalhe={`em ${formatarDia(resumo.atual.dia)}`} grande />
+                <Numero
+                  rotulo="Peso atual"
+                  valor={`${formatarPeso(resumo.atual.pesoKg)} kg`}
+                  detalhe={`em ${formatarDia(resumo.atual.dia)}`}
+                  grande
+                />
                 <Numero
                   rotulo="Desde o início"
                   valor={`${formatarVariacao(resumo.variacao)} kg`}
@@ -95,11 +165,15 @@ export function PaginaPeso() {
                   <Numero
                     rotulo={resumo.faltam > 0 ? "Faltam" : "Meta"}
                     valor={resumo.faltam > 0 ? `${formatarPeso(resumo.faltam)} kg` : "Atingida"}
-                    detalhe={`meta de ${formatarPeso(meta!.pesoAlvo)} kg`}
+                    detalhe={`meta de ${formatarPeso(projetoAberto!.pesoAlvo)} kg`}
                   />
                 )}
                 {resumo.imc !== null && (
-                  <Numero rotulo="IMC" valor={resumo.imc.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} detalhe={`altura ${meta!.alturaCm} cm`} />
+                  <Numero
+                    rotulo="IMC"
+                    valor={resumo.imc.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}
+                    detalhe={`altura ${perfil!.alturaCm} cm`}
+                  />
                 )}
               </section>
 
@@ -107,12 +181,33 @@ export function PaginaPeso() {
             </>
           ) : (
             <p className="text-sm text-tinta-2">
-              Nenhuma pesagem ainda. Toque em “Registrar peso” para começar o acompanhamento.
+              {selecao.tipo === "projeto"
+                ? "Este projeto ainda não tem pesagem. Toque em “Registrar peso”."
+                : "Nenhuma pesagem ainda. Toque em “Registrar peso” para começar."}
             </p>
           )}
 
-          <div className="order-last lg:order-none">
-            <FormMeta meta={meta} aoSalvar={carregar} />
+          <div className="order-last flex flex-col gap-5 lg:order-none">
+            {projetoAberto && (
+              <CartaoProjeto
+                projeto={projetoAberto}
+                doProjeto={emFoco}
+                aoEditar={() => setEdicaoProjeto({ projeto: projetoAberto })}
+                aoApagar={async () => {
+                  const r = await wlApi.apagarProjeto(projetoAberto.id);
+                  /*
+                   * As pesagens não vão embora com o projeto: voltam para "sem
+                   * projeto". Levar a tela para lá é o que mostra isso de
+                   * imediato, em vez de deixar a pessoa achar que perdeu tudo.
+                   */
+                  setSelecao(r.soltas > 0 ? { tipo: "sem" } : { tipo: "tudo" });
+                  await carregar();
+                  return r.soltas;
+                }}
+                aoErro={setErro}
+              />
+            )}
+            <FormPerfil perfil={perfil} aoSalvar={carregar} />
           </div>
         </div>
 
@@ -122,23 +217,26 @@ export function PaginaPeso() {
               <div className="mb-3 flex items-center justify-between gap-2">
                 <h2 className="font-medium">Evolução do peso (kg)</h2>
                 <div className="flex rounded-full bg-fundo p-0.5 text-xs">
-                  {(["30d", "90d", "tudo"] as const).map((p) => (
+                  {(["30d", "90d", "tudo"] as const).map((x) => (
                     <button
-                      key={p}
+                      key={x}
                       type="button"
-                      onClick={() => setPeriodo(p)}
-                      className={`rounded-full px-2.5 py-1 ${periodo === p ? "bg-superficie font-medium shadow-sm" : "text-tinta-2"}`}
+                      onClick={() => setPeriodo(x)}
+                      className={`rounded-full px-2.5 py-1 ${periodo === x ? "bg-superficie font-medium shadow-sm" : "text-tinta-2"}`}
                     >
-                      {p === "tudo" ? "Tudo" : p}
+                      {x === "tudo" ? "Tudo" : x}
                     </button>
                   ))}
                 </div>
               </div>
-              <GraficoPeso pesagens={filtrarPeriodo(pesagens, periodo, hoje)} pesoAlvo={meta?.pesoAlvo ?? null} />
+              <GraficoPeso
+                pesagens={filtrarPeriodo(emFoco, periodo, hoje)}
+                pesoAlvo={projetoAberto?.pesoAlvo ?? null}
+              />
             </section>
 
             <Historico
-              pesagens={pesagens}
+              pesagens={emFoco}
               aoEditar={(pesagem) => setEdicao({ pesagem })}
               aoMudar={carregar}
               aoErro={setErro}
@@ -149,13 +247,8 @@ export function PaginaPeso() {
 
       {/*
         O título da janela já diz se é registro ou correção — por isso o
-        formulário não repete um cabeçalho dentro.
-
-        A largura `normal` (32rem) basta: são três campos numa coluna.
-
-        O conteúdo é desmontado ao fechar (quem cuida disso é a `Modal`), então
-        toda abertura começa limpa. É o que dispensou a `key` que remontava o
-        formulário à mão quando ele vivia fixo na página.
+        formulário não repete um cabeçalho dentro. O conteúdo é desmontado ao
+        fechar (quem cuida disso é a `Modal`), então toda abertura começa limpa.
       */}
       <Modal
         aberto={edicao !== null}
@@ -168,12 +261,37 @@ export function PaginaPeso() {
       >
         <FormPesagem
           pesagem={edicao?.pesagem ?? null}
+          projetos={projetos}
+          /*
+           * O projeto sugerido é o que está aberto na tela: quem olha um projeto
+           * e toca em registrar quer lançar nele. Fora de um projeto não há o
+           * que sugerir, e a pesagem nasce solta até alguém dizer onde ela entra.
+           */
+          projetoSugerido={projetoAberto?.id ?? null}
           hoje={hoje}
           aoSalvar={async () => {
             setEdicao(null);
             await carregar();
           }}
           aoCancelar={() => setEdicao(null)}
+        />
+      </Modal>
+
+      <Modal
+        aberto={edicaoProjeto !== null}
+        titulo={edicaoProjeto?.projeto ? "Editar projeto" : "Novo projeto"}
+        aoFechar={() => setEdicaoProjeto(null)}
+      >
+        <FormProjeto
+          projeto={edicaoProjeto?.projeto ?? null}
+          aoSalvar={async (salvo) => {
+            setEdicaoProjeto(null);
+            // Projeto novo passa a ser o que se olha: foi para usá-lo que ele
+            // nasceu, e deixar a tela no antigo obrigaria a trocar à mão.
+            setSelecao({ tipo: "projeto", id: salvo.id });
+            await carregar();
+          }}
+          aoCancelar={() => setEdicaoProjeto(null)}
         />
       </Modal>
     </div>
@@ -198,12 +316,17 @@ export function PaginaPeso() {
  */
 function FormPesagem({
   pesagem,
+  projetos,
+  projetoSugerido,
   hoje,
   aoSalvar,
   aoCancelar,
 }: {
   /** `null` é registro novo; uma pesagem é a correção dela. */
   pesagem: Pesagem | null;
+  projetos: Projeto[];
+  /** O projeto que a tela está mostrando, oferecido no registro novo. */
+  projetoSugerido: number | null;
   hoje: string;
   aoSalvar: () => Promise<void>;
   aoCancelar: () => void;
@@ -218,6 +341,14 @@ function FormPesagem({
   );
   const [peso, setPeso] = useState(pesagem ? formatarPeso(pesagem.pesoKg) : "");
   const [padronizada, setPadronizada] = useState(pesagem?.padronizada ?? true);
+  /*
+   * Na correção vale o projeto que a pesagem já tem; no registro novo, o que a
+   * tela está mostrando. O `??` não serve aqui: `projetoId` nulo é uma escolha
+   * legítima (pesagem fora de projeto) e seria atropelado pela sugestão.
+   */
+  const [projetoId, setProjetoId] = useState<number | null>(
+    pesagem ? pesagem.projetoId : projetoSugerido,
+  );
   const [nota, setNota] = useState(pesagem?.nota ?? "");
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -249,6 +380,7 @@ function FormPesagem({
         medidoEm: doCampoLocal(quando),
         pesoKg: kg,
         padronizada,
+        projetoId,
         nota: nota.trim() || null,
       };
       await (pesagem ? wlApi.salvarPesagem(pesagem.id, dados) : wlApi.criarPesagem(dados));
@@ -304,6 +436,26 @@ function FormPesagem({
         maxLength={500}
         className="mt-2 w-full rounded-xl border border-borda bg-fundo px-3 py-2 text-sm outline-none focus:border-destaque"
       />
+      {/*
+        O projeto da pesagem. A opção vazia é pesagem fora de projeto, que é
+        estado legítimo e não um engano — é onde está o histórico importado.
+      */}
+      <label className="mt-2 block">
+        <span className="mb-1 block text-sm text-tinta-2">Projeto</span>
+        <select
+          value={projetoId ?? ""}
+          onChange={(e) => setProjetoId(e.target.value ? Number(e.target.value) : null)}
+          className="w-full rounded-xl border border-borda bg-fundo px-3 py-2 text-sm outline-none focus:border-destaque"
+        >
+          <option value="">Sem projeto</option>
+          {projetos.map((x) => (
+            <option key={x.id} value={x.id}>
+              {x.nome} (meta {formatarPeso(x.pesoAlvo)} kg)
+            </option>
+          ))}
+        </select>
+      </label>
+
       {/*
         As condições vão escritas embaixo, e não só no nome do campo: "padronizada"
         não lembra a ninguém quais são as cinco, e é justamente na hora de marcar
@@ -407,6 +559,9 @@ function Historico({
         medidoEm: p.medidoEm,
         pesoKg: p.pesoKg,
         padronizada: !p.padronizada,
+        // Vai junto porque o PUT grava a pesagem inteira: sem o projeto no
+        // corpo, trocar a estrela soltaria a pesagem do projeto dela.
+        projetoId: p.projetoId,
         nota: p.nota,
       });
       await aoMudar();
@@ -521,20 +676,324 @@ function Estrela({
   );
 }
 
-function FormMeta({ meta, aoSalvar }: { meta: Meta | null; aoSalvar: () => Promise<void> }) {
-  const [alvo, setAlvo] = useState(meta ? formatarPeso(meta.pesoAlvo) : "");
-  const [altura, setAltura] = useState(meta?.alturaCm ? String(meta.alturaCm) : "");
+/**
+ * A fila de projetos no alto da tela, com "Sem projeto" e "Tudo" no fim.
+ *
+ * Fichas numa fila que rola, e não um `<select>`: são poucos projetos e vê-los
+ * todos de uma vez é o que mostra a forma do histórico — onde houve tentativa e
+ * onde houve silêncio. Num seletor fechado isso só apareceria ao abrir.
+ *
+ * Cada ficha leva o período do projeto, calculado das pesagens dele. É o que
+ * permite reconhecer um projeto sem lembrar o nome que se deu a ele.
+ */
+function SeletorDeProjeto({
+  projetos,
+  pesagens,
+  soltas,
+  selecao,
+  aoEscolher,
+  aoNovoProjeto,
+}: {
+  projetos: Projeto[];
+  pesagens: Pesagem[];
+  /** Quantas pesagens estão fora de projeto. Zero esconde a ficha. */
+  soltas: number;
+  selecao: Selecao;
+  aoEscolher: (s: Selecao) => void;
+  aoNovoProjeto: () => void;
+}) {
+  return (
+    <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+      {projetos.map((p) => {
+        const doProjeto = pesagensDoProjeto(pesagens, p.id);
+        const periodo = periodoDoProjeto(doProjeto);
+        return (
+          <Ficha
+            key={p.id}
+            ativa={selecao.tipo === "projeto" && selecao.id === p.id}
+            aoClicar={() => aoEscolher({ tipo: "projeto", id: p.id })}
+            titulo={p.nome}
+            detalhe={
+              periodo
+                ? `${formatarDia(periodo.de, true)} → ${formatarDia(periodo.ate, true)} · ${doProjeto.length}×`
+                : "sem pesagem ainda"
+            }
+          />
+        );
+      })}
+
+      {soltas > 0 && (
+        <Ficha
+          ativa={selecao.tipo === "sem"}
+          aoClicar={() => aoEscolher({ tipo: "sem" })}
+          titulo="Sem projeto"
+          detalhe={`${soltas} pesagens a repartir`}
+        />
+      )}
+
+      <Ficha
+        ativa={selecao.tipo === "tudo"}
+        aoClicar={() => aoEscolher({ tipo: "tudo" })}
+        titulo="Tudo"
+        detalhe={`${pesagens.length} pesagens`}
+      />
+
+      <button
+        type="button"
+        onClick={aoNovoProjeto}
+        className="shrink-0 rounded-xl border border-dashed border-borda px-3 py-2 text-sm text-tinta-2 hover:text-tinta"
+      >
+        + Projeto
+      </button>
+    </div>
+  );
+}
+
+function Ficha({
+  ativa,
+  aoClicar,
+  titulo,
+  detalhe,
+}: {
+  ativa: boolean;
+  aoClicar: () => void;
+  titulo: string;
+  detalhe: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={aoClicar}
+      // `aria-pressed` e não só a cor: para o leitor de tela, estas fichas são
+      // um grupo de botões em que um está ligado — e a cor não é lida.
+      aria-pressed={ativa}
+      className={
+        "shrink-0 rounded-xl border px-3 py-2 text-left " +
+        (ativa ? "border-destaque bg-destaque-suave" : "border-borda bg-superficie")
+      }
+    >
+      <div className="text-sm font-medium">{titulo}</div>
+      <div className="tabular text-xs text-tinta-3">{detalhe}</div>
+    </button>
+  );
+}
+
+/**
+ * O cartão do projeto aberto: nome, meta, período e o que se pode fazer com ele.
+ *
+ * O período e a duração saem das pesagens (`periodoDoProjeto`, `diasDoProjeto`)
+ * e não de campos — é a decisão que o schema registra: não há datas cadastradas
+ * para discordarem dos dados.
+ */
+function CartaoProjeto({
+  projeto,
+  doProjeto,
+  aoEditar,
+  aoApagar,
+  aoErro,
+}: {
+  projeto: Projeto;
+  doProjeto: Pesagem[];
+  aoEditar: () => void;
+  /** Apaga e devolve quantas pesagens ficaram soltas, para o aviso. */
+  aoApagar: () => Promise<number>;
+  aoErro: (msg: string) => void;
+}) {
+  const [apagando, setApagando] = useState(false);
+  const periodo = periodoDoProjeto(doProjeto);
+  const dias = diasDoProjeto(doProjeto);
+
+  async function apagar() {
+    /*
+     * O aviso diz o que acontece com as pesagens, porque é a dúvida que
+     * aparece na hora: apagar o projeto não apaga o histórico, solta ele.
+     */
+    const quantas = doProjeto.length;
+    const texto =
+      quantas === 0
+        ? `Apagar o projeto “${projeto.nome}”?`
+        : `Apagar o projeto “${projeto.nome}”?\n\nAs ${quantas} pesagens dele NÃO serão apagadas: voltam para “Sem projeto” e podem ser reagrupadas depois.`;
+    if (!confirm(texto)) return;
+
+    setApagando(true);
+    try {
+      await aoApagar();
+    } catch (e) {
+      aoErro((e as Error).message);
+    } finally {
+      setApagando(false);
+    }
+  }
+
+  return (
+    <section className="rounded-2xl border border-borda bg-superficie p-4">
+      <div className="flex items-baseline justify-between gap-2">
+        <h2 className="min-w-0 truncate font-medium">{projeto.nome}</h2>
+        <span className="tabular shrink-0 text-sm text-tinta-2">
+          meta {formatarPeso(projeto.pesoAlvo)} kg
+        </span>
+      </div>
+
+      <div className="tabular mt-1 text-xs text-tinta-3">
+        {periodo
+          ? `${formatarDia(periodo.de, true)} → ${formatarDia(periodo.ate, true)} · ${dias} dias · ${doProjeto.length} pesagens`
+          : "Nenhuma pesagem ainda."}
+      </div>
+
+      {projeto.nota && <p className="mt-2 text-sm text-tinta-2">{projeto.nota}</p>}
+
+      <div className="mt-3 flex gap-2">
+        <button
+          type="button"
+          onClick={aoEditar}
+          className="rounded-xl border border-borda px-3 py-1.5 text-sm text-tinta-2 hover:text-tinta"
+        >
+          Editar
+        </button>
+        <button
+          type="button"
+          onClick={() => void apagar()}
+          disabled={apagando}
+          className="rounded-xl px-3 py-1.5 text-sm text-tinta-3 hover:text-perigo disabled:opacity-50"
+        >
+          {apagando ? "Apagando…" : "Apagar"}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+/** O cadastro de um projeto, dentro da janela. */
+function FormProjeto({
+  projeto,
+  aoSalvar,
+  aoCancelar,
+}: {
+  projeto: Projeto | null;
+  /** Recebe o projeto salvo, para a tela poder passar a olhá-lo. */
+  aoSalvar: (salvo: Projeto) => Promise<void>;
+  aoCancelar: () => void;
+}) {
+  const [nome, setNome] = useState(projeto?.nome ?? "");
+  const [alvo, setAlvo] = useState(projeto ? formatarPeso(projeto.pesoAlvo) : "");
+  const [nota, setNota] = useState(projeto?.nota ?? "");
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  async function enviar(e: React.FormEvent) {
+    e.preventDefault();
+    if (!nome.trim()) return setErro("Diga o nome do projeto.");
+    const pesoAlvo = lerPeso(alvo);
+    if (pesoAlvo === null) return setErro("Digite a meta em kg, como 75.");
+
+    setSalvando(true);
+    setErro(null);
+    try {
+      const dados = { nome: nome.trim(), pesoAlvo, nota: nota.trim() || null };
+      const salvo = projeto
+        ? await wlApi.salvarProjeto(projeto.id, dados)
+        : await wlApi.criarProjeto(dados);
+      await aoSalvar(salvo);
+    } catch (e) {
+      setErro((e as Error).message);
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    // Sem moldura nem título próprios: a janela que o abriga já tem as duas.
+    <form onSubmit={enviar} className="space-y-3">
+      <label className="block">
+        <span className="mb-1 block text-sm text-tinta-2">Nome</span>
+        <input
+          value={nome}
+          onChange={(e) => setNome(e.target.value)}
+          placeholder="Verão 2027"
+          maxLength={80}
+          // Sem um `autofocus` à vista, o `showModal()` entrega o foco ao × de
+          // fechar — começar com o dedo no botão de desistir é estranho.
+          autoFocus
+          className="w-full rounded-xl border border-borda bg-fundo px-3 py-2.5 outline-none focus:border-destaque"
+        />
+      </label>
+
+      <label className="block">
+        <span className="mb-1 block text-sm text-tinta-2">Meta de peso (kg)</span>
+        <input
+          value={alvo}
+          onChange={(e) => setAlvo(e.target.value)}
+          inputMode="decimal"
+          placeholder="75"
+          className="tabular w-full rounded-xl border border-borda bg-fundo px-3 py-2.5 outline-none focus:border-destaque"
+        />
+        {/*
+          A meta é de cada projeto, e vale lembrar: a de 2019 não precisa ser a
+          de hoje, e é justamente por isso que ela mora aqui e não no perfil.
+        */}
+        <span className="mt-1 block text-xs text-tinta-3">
+          Vale só para este projeto. Cada tentativa pode ter a sua.
+        </span>
+      </label>
+
+      <label className="block">
+        <span className="mb-1 block text-sm text-tinta-2">Nota (opcional)</span>
+        <input
+          value={nota}
+          onChange={(e) => setNota(e.target.value)}
+          placeholder="Depois da cirurgia, com acompanhamento"
+          maxLength={500}
+          className="w-full rounded-xl border border-borda bg-fundo px-3 py-2 text-sm outline-none focus:border-destaque"
+        />
+      </label>
+
+      {erro && <p className="text-sm text-perigo">{erro}</p>}
+
+      <div className="flex gap-2">
+        <button
+          type="submit"
+          disabled={salvando}
+          className="flex-1 rounded-xl bg-destaque py-2.5 font-medium text-sobre-destaque disabled:opacity-60"
+        >
+          {salvando ? "Salvando…" : projeto ? "Salvar" : "Criar projeto"}
+        </button>
+        <button
+          type="button"
+          onClick={aoCancelar}
+          className="rounded-xl border border-borda px-4 text-tinta-2"
+        >
+          Cancelar
+        </button>
+      </div>
+    </form>
+  );
+}
+
+/**
+ * A altura, que é da pessoa e não de projeto nenhum.
+ *
+ * Era o `FormMeta` e cuidava também do peso alvo. O alvo virou campo de cada
+ * projeto; aqui ficou só o que o IMC precisa.
+ */
+function FormPerfil({
+  perfil,
+  aoSalvar,
+}: {
+  perfil: Perfil | null;
+  aoSalvar: () => Promise<void>;
+}) {
+  const [altura, setAltura] = useState(perfil?.alturaCm ? String(perfil.alturaCm) : "");
   const [erro, setErro] = useState<string | null>(null);
   const [salvo, setSalvo] = useState(false);
 
   async function enviar(e: React.FormEvent) {
     e.preventDefault();
-    const pesoAlvo = lerPeso(alvo);
     const alturaCm = altura.trim() ? Number(altura) : null;
-    if (pesoAlvo === null) return setErro("Digite a meta em kg, como 75.");
-    if (alturaCm !== null && !Number.isInteger(alturaCm)) return setErro("Altura em centímetros, sem vírgula: 175.");
+    if (alturaCm !== null && !Number.isInteger(alturaCm)) {
+      return setErro("Altura em centímetros, sem vírgula: 175.");
+    }
     try {
-      await wlApi.salvarMeta({ pesoAlvo, alturaCm });
+      await wlApi.salvarPerfil({ alturaCm });
       setErro(null);
       setSalvo(true);
       await aoSalvar();
@@ -544,26 +1003,27 @@ function FormMeta({ meta, aoSalvar }: { meta: Meta | null; aoSalvar: () => Promi
   }
 
   return (
-    // Fechado quando já existe meta: é algo que se ajusta raramente, e aberto
-    // ele empurraria o histórico para baixo todo dia.
-    <details open={!meta} className="rounded-2xl border border-borda bg-superficie p-4">
-      <summary className="cursor-pointer font-medium">Meta</summary>
+    // Fechado quando já há altura: muda uma vez na vida, e aberto ele
+    // empurraria o resto da coluna para baixo todo dia.
+    <details open={!perfil?.alturaCm} className="rounded-2xl border border-borda bg-superficie p-4">
+      <summary className="cursor-pointer font-medium">Perfil</summary>
       <form onSubmit={enviar} className="mt-3 space-y-2">
-        <div className="grid grid-cols-2 gap-2">
-          <label className="text-sm text-tinta-2">
-            Peso alvo (kg)
-            <input value={alvo} onChange={(e) => { setAlvo(e.target.value); setSalvo(false); }} inputMode="decimal" placeholder="75"
-              className="tabular mt-1 w-full rounded-xl border border-borda bg-fundo px-3 py-2 text-tinta outline-none focus:border-destaque" />
-          </label>
-          <label className="text-sm text-tinta-2">
-            Altura (cm, opcional)
-            <input value={altura} onChange={(e) => { setAltura(e.target.value); setSalvo(false); }} inputMode="numeric" placeholder="175"
-              className="tabular mt-1 w-full rounded-xl border border-borda bg-fundo px-3 py-2 text-tinta outline-none focus:border-destaque" />
-          </label>
-        </div>
+        <label className="block text-sm text-tinta-2">
+          Altura (cm, opcional — é o que o IMC usa)
+          <input
+            value={altura}
+            onChange={(e) => {
+              setAltura(e.target.value);
+              setSalvo(false);
+            }}
+            inputMode="numeric"
+            placeholder="175"
+            className="tabular mt-1 w-full rounded-xl border border-borda bg-fundo px-3 py-2 text-tinta outline-none focus:border-destaque"
+          />
+        </label>
         {erro && <p className="text-sm text-perigo">{erro}</p>}
         <button type="submit" className="w-full rounded-xl border border-borda py-2 text-sm font-medium">
-          {salvo ? "Meta salva ✓" : "Salvar meta"}
+          {salvo ? "Perfil salvo ✓" : "Salvar perfil"}
         </button>
       </form>
     </details>
