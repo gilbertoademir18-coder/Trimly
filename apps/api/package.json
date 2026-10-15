@@ -10,7 +10,7 @@
     "test": "vitest run",
     "postinstall": "prisma generate",
     "db:migrate": "prisma migrate dev",
-    "db:deploy": "prisma migrate deploy",
+    "db:deploy": "prisma migrate deploy && prisma generate",
     "db:studio": "prisma studio"
   },
   "dependencies": {
