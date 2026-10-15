@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { Modal } from "../../modal.tsx";
 import { wlApi } from "./api.ts";
 import { Aviso, CabecalhoInterno } from "./aviso.tsx";
 import {
@@ -26,7 +27,15 @@ export function PaginaPeso() {
   const [pesagens, setPesagens] = useState<Pesagem[] | null>(null);
   const [meta, setMeta] = useState<Meta | null>(null);
   const [erro, setErro] = useState<string | null>(null);
-  const [editando, setEditando] = useState<Pesagem | null>(null);
+  /*
+   * A janela do formulário: `null` é fechada, `{ pesagem: null }` é um
+   * registro novo e `{ pesagem }` é a correção de uma que já existe.
+   *
+   * Um estado só, e não um par "aberta?" + "qual pesagem?": com dois, dava
+   * para escrever o par impossível (fechada com pesagem dentro, aberta sem
+   * nada) e a janela abriria vazia quando devia corrigir.
+   */
+  const [edicao, setEdicao] = useState<{ pesagem: Pesagem | null } | null>(null);
   const [periodo, setPeriodo] = useState<Periodo>("90d");
 
   const carregar = useCallback(async () => {
@@ -49,11 +58,18 @@ export function PaginaPeso() {
 
   const hoje = diaLocal();
   const resumo = resumir(pesagens, meta);
-  const deHoje = pesagens.find((p) => p.data === hoje) ?? null;
 
   return (
     <div className="space-y-5">
-      <CabecalhoInterno titulo="Peso" />
+      <CabecalhoInterno titulo="Peso">
+        <button
+          type="button"
+          onClick={() => setEdicao({ pesagem: null })}
+          className="rounded-xl bg-destaque px-4 py-2 text-sm font-medium text-sobre-destaque"
+        >
+          Registrar peso
+        </button>
+      </CabecalhoInterno>
       {erro && <Aviso texto={erro} />}
 
       {/*
@@ -63,19 +79,6 @@ export function PaginaPeso() {
       */}
       <div className="flex flex-col gap-5 lg:grid lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:items-start">
         <div className="contents lg:flex lg:flex-col lg:gap-5">
-          <FormPesagem
-            // Trocar a `key` remonta o formulário com os valores da pesagem
-            // escolhida — mais simples que sincronizar estado com efeito.
-            key={editando?.data ?? `hoje-${deHoje?.pesoKg ?? ""}`}
-            inicial={editando ?? deHoje}
-            hoje={hoje}
-            aoSalvar={async () => {
-              setEditando(null);
-              await carregar();
-            }}
-            aoCancelar={editando ? () => setEditando(null) : undefined}
-          />
-
           {resumo ? (
             <>
               <section className="grid grid-cols-2 gap-3">
@@ -100,7 +103,9 @@ export function PaginaPeso() {
               {resumo.progresso !== null && <BarraProgresso progresso={resumo.progresso} />}
             </>
           ) : (
-            <p className="text-sm text-tinta-2">Registre a primeira pesagem para começar o acompanhamento.</p>
+            <p className="text-sm text-tinta-2">
+              Nenhuma pesagem ainda. Toque em “Registrar peso” para começar o acompanhamento.
+            </p>
           )}
 
           <div className="order-last lg:order-none">
@@ -129,28 +134,84 @@ export function PaginaPeso() {
               <GraficoPeso pesagens={filtrarPeriodo(pesagens, periodo, hoje)} pesoAlvo={meta?.pesoAlvo ?? null} />
             </section>
 
-            <Historico pesagens={pesagens} aoEditar={setEditando} aoMudar={carregar} aoErro={setErro} />
+            <Historico
+              pesagens={pesagens}
+              aoEditar={(pesagem) => setEdicao({ pesagem })}
+              aoMudar={carregar}
+              aoErro={setErro}
+            />
           </div>
         )}
       </div>
+
+      {/*
+        O título da janela já diz se é registro ou correção — por isso o
+        formulário não repete um cabeçalho dentro.
+
+        A largura `normal` (32rem) basta: são três campos numa coluna.
+
+        O conteúdo é desmontado ao fechar (quem cuida disso é a `Modal`), então
+        toda abertura começa limpa. É o que dispensou a `key` que remontava o
+        formulário à mão quando ele vivia fixo na página.
+      */}
+      <Modal
+        aberto={edicao !== null}
+        titulo={
+          edicao?.pesagem
+            ? `Editar pesagem de ${formatarDia(edicao.pesagem.data, true)}`
+            : "Registrar peso"
+        }
+        aoFechar={() => setEdicao(null)}
+      >
+        <FormPesagem
+          pesagem={edicao?.pesagem ?? null}
+          hoje={hoje}
+          aoSalvar={async () => {
+            setEdicao(null);
+            await carregar();
+          }}
+          aoCancelar={() => setEdicao(null)}
+        />
+      </Modal>
     </div>
   );
 }
 
+/**
+ * O formulário de uma pesagem, dentro da janela.
+ *
+ * Dois feitios, e quem separa é `pesagem`:
+ *
+ *   `null`       registro novo. O dia começa em hoje e pode ser mudado, que é
+ *                como se lança a pesagem de ontem que ficou esquecida.
+ *   uma pesagem  correção de uma que já existe. O dia fica travado.
+ *
+ * O dia travado na correção porque ele é a identidade do registro: a API grava
+ * por dia (`PUT /wl/pesagens/:dia`), então mudá-lo não moveria a pesagem de
+ * lugar — gravaria outra e deixaria a antiga onde estava. Para trocar o dia, o
+ * caminho é apagar e registrar de novo.
+ *
+ * O feitio híbrido que havia aqui — preenchido com a pesagem de hoje mas com o
+ * dia livre — saiu de propósito: numa janela ele era armadilha. Via-se 72,5
+ * preenchido, trocava-se o dia para ontem e o número de hoje ia para o dia
+ * errado. Quem quer corrigir hoje clica em "Editar" na primeira linha do
+ * histórico, onde o dia vem travado no dia certo.
+ */
 function FormPesagem({
-  inicial,
+  pesagem,
   hoje,
   aoSalvar,
   aoCancelar,
 }: {
-  inicial: Pesagem | null;
+  /** `null` é registro novo; uma pesagem é a correção dela. */
+  pesagem: Pesagem | null;
   hoje: string;
   aoSalvar: () => Promise<void>;
-  aoCancelar?: () => void;
+  aoCancelar: () => void;
 }) {
-  const [dia, setDia] = useState(inicial?.data ?? hoje);
-  const [peso, setPeso] = useState(inicial ? formatarPeso(inicial.pesoKg) : "");
-  const [nota, setNota] = useState(inicial?.nota ?? "");
+  const [dia, setDia] = useState(pesagem?.data ?? hoje);
+  const [peso, setPeso] = useState(pesagem ? formatarPeso(pesagem.pesoKg) : "");
+  const [nota, setNota] = useState(pesagem?.nota ?? "");
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
@@ -173,11 +234,10 @@ function FormPesagem({
     }
   }
 
-  const titulo = aoCancelar ? `Editar pesagem de ${formatarDia(dia, true)}` : inicial ? "Pesagem de hoje" : "Registrar peso";
-
   return (
-    <form onSubmit={enviar} className="rounded-2xl border border-borda bg-superficie p-4">
-      <h2 className="mb-3 font-medium">{titulo}</h2>
+    // Sem moldura nem título próprios: a janela que o abriga já tem as duas, e
+    // repeti-las dava caixa dentro de caixa com o título escrito duas vezes.
+    <form onSubmit={enviar}>
       <div className="flex gap-2">
         <label className="flex-1">
           <span className="sr-only">Peso em kg</span>
@@ -188,6 +248,10 @@ function FormPesagem({
               inputMode="decimal"
               placeholder="72,5"
               autoComplete="off"
+              // Sem um `autofocus` à vista, o `showModal()` entrega o foco ao
+              // primeiro focável da janela, que é o × de fechar — e começar com
+              // o dedo no botão de desistir é estranho.
+              autoFocus
               className="tabular w-full bg-transparent py-2.5 text-lg outline-none"
             />
             <span className="text-tinta-3">kg</span>
@@ -198,7 +262,7 @@ function FormPesagem({
           value={dia}
           max={hoje}
           onChange={(e) => setDia(e.target.value)}
-          disabled={!!aoCancelar}
+          disabled={pesagem !== null}
           aria-label="Dia da pesagem"
           className="rounded-xl border border-borda bg-fundo px-2 text-sm disabled:opacity-60"
         />
@@ -217,13 +281,11 @@ function FormPesagem({
           disabled={salvando}
           className="flex-1 rounded-xl bg-destaque py-2.5 font-medium text-sobre-destaque disabled:opacity-60"
         >
-          {salvando ? "Salvando…" : inicial ? "Atualizar" : "Salvar"}
+          {salvando ? "Salvando…" : pesagem ? "Atualizar" : "Salvar"}
         </button>
-        {aoCancelar && (
-          <button type="button" onClick={aoCancelar} className="rounded-xl border border-borda px-4 text-tinta-2">
-            Cancelar
-          </button>
-        )}
+        <button type="button" onClick={aoCancelar} className="rounded-xl border border-borda px-4 text-tinta-2">
+          Cancelar
+        </button>
       </div>
     </form>
   );
