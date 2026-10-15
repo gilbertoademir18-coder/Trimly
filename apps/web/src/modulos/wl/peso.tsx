@@ -190,21 +190,21 @@ export function PaginaPeso() {
                   peso é o contexto que a explica. Num idioma que se lê da esquerda
                   para a direita, o canto de cima à esquerda é onde o olho cai.
 
-                  "Último peso" e não "Peso atual", que era o rótulo antigo: dos dez
-                  projetos, nove terminaram há anos, e chamar de atual o peso de
-                  junho de 2019 era simplesmente falso.
+                  "Último registro" e não "Peso atual", que era o rótulo original:
+                  dos dez projetos, nove terminaram há anos, e chamar de atual o peso
+                  de junho de 2019 era simplesmente falso.
 
                   O ano vai nas duas datas. Sem ele, "em 30/06" num projeto de 2019
                   faria pensar neste ano.
                 */}
                 <Numero
-                  rotulo="Último peso"
+                  rotulo="Último registro"
                   valor={`${formatarPeso(resumo.atual.pesoKg)} kg`}
                   detalhe={pontaEm(resumo.atual, perfil?.alturaCm ?? null)}
                   grande
                 />
                 <Numero
-                  rotulo="Primeiro peso"
+                  rotulo="Primeiro registro"
                   valor={`${formatarPeso(resumo.inicial.pesoKg)} kg`}
                   detalhe={pontaEm(resumo.inicial, perfil?.alturaCm ?? null)}
                   grande
