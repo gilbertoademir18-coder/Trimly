@@ -198,6 +198,17 @@ export function periodoDoProjeto(doProjeto: Pesagem[]): { de: string; ate: strin
 }
 
 /**
+ * `1` → `"1 dia"`; `186` → `"186 dias"`.
+ *
+ * Existe para o singular: o cartão do projeto dizia "1 dias" num projeto que
+ * durou um dia só — o que acontece sempre que alguém pesa duas vezes na mesma
+ * manhã e nunca mais.
+ */
+export function formatarDias(dias: number): string {
+  return dias === 1 ? "1 dia" : `${dias} dias`;
+}
+
+/**
  * Os projetos do mais recente para o mais antigo, pelo PERÍODO deles.
  *
  * Ordenado aqui e não no servidor porque o período não é coluna: ele sai das

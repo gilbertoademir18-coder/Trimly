@@ -4,6 +4,7 @@ import {
   diasDoProjeto,
   faixaDaPontuacao,
   filtrarPeriodo,
+  formatarDias,
   formatarVariacao,
   lerPeso,
   marcasDoEixo,
@@ -292,6 +293,20 @@ describe("os recortes de projeto", () => {
 
     it("devolve null sem pesagem nenhuma", () => {
       expect(diasDoProjeto([])).toBeNull();
+    });
+  });
+
+  describe("formatarDias", () => {
+    it("usa o singular em um dia", () => {
+      // O cartão dizia "1 dias" — acontece sempre que alguém pesa duas vezes na
+      // mesma manhã e nunca mais volta ao projeto.
+      expect(formatarDias(1)).toBe("1 dia");
+    });
+
+    it("usa o plural no resto", () => {
+      expect(formatarDias(0)).toBe("0 dias");
+      expect(formatarDias(2)).toBe("2 dias");
+      expect(formatarDias(186)).toBe("186 dias");
     });
   });
 

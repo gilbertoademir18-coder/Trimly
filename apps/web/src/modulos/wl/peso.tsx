@@ -8,6 +8,7 @@ import {
   doCampoLocal,
   filtrarPeriodo,
   formatarDia,
+  formatarDias,
   formatarHora,
   formatarPeso,
   formatarVariacao,
@@ -745,8 +746,13 @@ function SeletorDeProjeto({
             titulo={p.nome}
             detalhe={
               periodo
-                ? `${formatarDia(periodo.de, true)} → ${formatarDia(periodo.ate, true)} · ${doProjeto.length}×`
+                ? `${formatarDia(periodo.de, true)} → ${formatarDia(periodo.ate, true)}`
                 : "sem pesagem ainda"
+            }
+            rodape={
+              periodo
+                ? `${formatarDias(diasDoProjeto(doProjeto)!)} · ${doProjeto.length} pesagens`
+                : undefined
             }
           />
         );
@@ -784,11 +790,20 @@ function Ficha({
   aoClicar,
   titulo,
   detalhe,
+  rodape,
 }: {
   ativa: boolean;
   aoClicar: () => void;
   titulo: string;
   detalhe: string;
+  /*
+   * Terceira linha, só nas fichas de projeto: duração e contagem.
+   *
+   * Linha própria e não emendada no `detalhe`: com o período inteiro mais a
+   * duração mais a contagem, a ficha passava de 30 caracteres e virava uma
+   * tira larga demais na fila que rola.
+   */
+  rodape?: string;
 }) {
   return (
     <button
@@ -804,6 +819,7 @@ function Ficha({
     >
       <div className="text-sm font-medium">{titulo}</div>
       <div className="tabular text-xs text-tinta-3">{detalhe}</div>
+      {rodape && <div className="tabular text-xs text-tinta-3">{rodape}</div>}
     </button>
   );
 }
@@ -868,7 +884,7 @@ function CartaoProjeto({
 
       <div className="tabular mt-1 text-xs text-tinta-3">
         {periodo
-          ? `${formatarDia(periodo.de, true)} → ${formatarDia(periodo.ate, true)} · ${dias} dias · ${doProjeto.length} pesagens`
+          ? `${formatarDia(periodo.de, true)} → ${formatarDia(periodo.ate, true)} · ${formatarDias(dias!)} · ${doProjeto.length} pesagens`
           : "Nenhuma pesagem ainda."}
       </div>
 
