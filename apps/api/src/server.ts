@@ -33,8 +33,15 @@ app.setErrorHandler((erro: Error & { statusCode?: number; code?: string }, req, 
   // Pelo código, e não pela mensagem: o texto vem do Postgres no idioma da
   // instalação ("autenticação do tipo senha falhou..."). P10xx são os erros
   // de conexão do Prisma; ECONNREFUSED é o Postgres parado.
+  //
+  // No `$queryRaw` a falha vem como P2010, com o SQLSTATE do driver lá
+  // dentro: 08xxx é conexão, 28xxx autenticação, 3D000 banco que não existe.
+  type ErroDoDriver = { meta?: { driverAdapterError?: { cause?: { originalCode?: unknown } } } };
+  const sqlState = String((erro as ErroDoDriver).meta?.driverAdapterError?.cause?.originalCode ?? "");
   const semBanco =
-    erro.code?.startsWith("P10") || /ECONNREFUSED|DatabaseNotReachable/.test(JSON.stringify(erro.cause ?? ""));
+    erro.code?.startsWith("P10") ||
+    /^(08|28|3D000)/.test(sqlState) ||
+    /ECONNREFUSED|DatabaseNotReachable/.test(JSON.stringify(erro.cause ?? ""));
   return reply.code(500).send({
     erro: semBanco
       ? "Sem conexão com o banco de dados. O PostgreSQL está rodando?"
